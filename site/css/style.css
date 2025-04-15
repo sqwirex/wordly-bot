@@ -67,7 +67,7 @@ main {
 }
 
 section {
-    margin-bottom: 40px;
+    margin-bottom: 20px;
     background-color: white;
     padding: 20px;
     border-radius: 8px;
@@ -102,6 +102,11 @@ footer {
     justify-content: center;
     display: flex;
     margin: 0 auto;
+}
+
+#participants {
+    display: block;
+    margin-left: 30px;
 }
 
 /* Адаптивный дизайн */
