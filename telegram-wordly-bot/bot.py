@@ -78,13 +78,16 @@ morph = pymorphy2.MorphAnalyzer(lang="ru")
 # частотный порог (регулируйте по вкусу)
 ZIPF_THRESHOLD = 2.5
 
+BLACK_LIST = {"поуп", "федя"}
+
 WORDLIST = sorted({
     w
     for w in iter_wordlist("ru", wordlist="large")
     if (
         w.isalpha()
         and 4 <= len(w) <= 11
-        and zipf_frequency(w, "ru") >= ZIPF_THRESHOLD  # вот он фильтр по частоте
+        and w not in BLACK_LIST
+	and zipf_frequency(w, "ru") >= ZIPF_THRESHOLD  # вот он фильтр по частоте
     )
     # если нужны только существительные-леммы, добавьте проверку pymorphy2:
     for p in [morph.parse(w)[0]]
