@@ -10,45 +10,79 @@ from telegram.ext import (
     ConversationHandler,
     filters,
 )
-from wordfreq import top_n_list
+from wordfreq import iter_wordlist
 from dotenv import load_dotenv
 
-load_dotenv()  # для локального .env
+# Загрузка .env
+load_dotenv()
 
+# Логирование
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-ASK_LENGTH, GUESSING, PLAY_AGAIN = range(3)
-WORDLIST = top_n_list("ru", 50000)
-GREEN, YELLOW, RED = "🟩", "🟨", "🟥"
+# Состояния Conversation
+ASK_LENGTH, GUESSING = range(2)
+
+# Словарь «small» для экономии памяти
+WORDLIST = list(iter_wordlist("ru", wordlist="small"))
+
+# Эмоджи статусов
+GREEN, YELLOW, RED, UNK = "🟩", "🟨", "🟥", "⬜"
+
 
 def make_feedback(secret: str, guess: str) -> str:
-    feedback = [None] * len(guess)
+    fb = [None] * len(guess)
     secret_chars = list(secret)
-    # зелёные
+    # 1) зелёные
     for i, ch in enumerate(guess):
         if secret[i] == ch:
-            feedback[i] = GREEN
+            fb[i] = GREEN
             secret_chars[i] = None
-    # жёлтые/красные
+    # 2) жёлтые/красные
     for i, ch in enumerate(guess):
-        if feedback[i] is None:
+        if fb[i] is None:
             if ch in secret_chars:
-                feedback[i] = YELLOW
+                fb[i] = YELLOW
                 secret_chars[secret_chars.index(ch)] = None
             else:
-                feedback[i] = RED
-    return "".join(feedback)
+                fb[i] = RED
+    return "".join(fb)
 
-# ==== Обработчики команд ====
+
+def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
+    status: dict[str, str] = {}
+    for guess in guesses:
+        # зелёные
+        for i, ch in enumerate(guess):
+            if secret[i] == ch:
+                status[ch] = "green"
+        # копия списка для жёлтых
+        secret_chars = list(secret)
+        for i, ch in enumerate(guess):
+            if status.get(ch) == "green":
+                secret_chars[i] = None
+        # жёлтые/красные
+        for i, ch in enumerate(guess):
+            if status.get(ch) == "green":
+                continue
+            if ch in secret_chars:
+                if status.get(ch) != "green":
+                    status[ch] = "yellow"
+                secret_chars[secret_chars.index(ch)] = None
+            else:
+                if status.get(ch) not in ("green", "yellow"):
+                    status[ch] = "red"
+    return status
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Привет! Я Wordly Bot — угадай слово за 6 попыток.\n\n"
         "/play — начать новую игру\n"
+        "/my_letters — показать информацию о буквах во время игры\n"
         "/reset — сбросить текущую игру\n\n"
         "Только не забывай: я ещё учусь и не знаю некоторых слов!\n"
         "Не расстраивайся, если я ругаюсь на твоё слово — мне есть чему учиться :)\n\n"
@@ -58,9 +92,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Поэтому после перезапуска придётся угадывать новое слово (х_х)."
     )
 
+
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Сколько букв в слове? (4–11)")
     return ASK_LENGTH
+
 
 async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -75,124 +111,147 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ASK_LENGTH
 
     secret = random.choice(candidates)
-    context.user_data.update({
-        "secret": secret,
-        "length": length,
-        "attempts": 0,
-    })
+    context.user_data["secret"] = secret
+    context.user_data["length"] = length
+    context.user_data["attempts"] = 0
+    context.user_data["guesses"] = []
+
     await update.message.reply_text(
-        f"Загадал слово из {length} букв. У тебя 6 попыток. Введи первую догадку:"
+        f"Я загадал слово из {length} букв. У тебя 6 попыток. Введи первую догадку:"
     )
     return GUESSING
 
+
 async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     guess = update.message.text.strip().lower()
+    secret = context.user_data["secret"]
     length = context.user_data["length"]
+
     if len(guess) != length or guess not in WORDLIST:
         await update.message.reply_text(f"Введите существующее слово из {length} букв.")
         return GUESSING
 
+    context.user_data["guesses"].append(guess)
     context.user_data["attempts"] += 1
     attempts = context.user_data["attempts"]
-    secret = context.user_data["secret"]
 
-    feedback = make_feedback(secret, guess)
-    await update.message.reply_text(feedback)
+    fb = make_feedback(secret, guess)
+    await update.message.reply_text(fb)
 
+    # победа
     if guess == secret:
+        context.user_data.clear()
+        form = "попытка" if attempts % 10 == 1 and attempts % 100 != 11 else (
+               "попытки" if 2 <= attempts % 10 <= 4 and not 12 <= attempts % 100 <= 14
+               else "попыток")
         await update.message.reply_text(
-            f"🎉 Поздравляю! Угадал за {attempts} попыток.\n"
-            "Сыграем ещё? (да/нет)"
+            f"🎉 Поздравляю! Угадал за {attempts} {form}.\n"
+            "Чтобы сыграть вновь, введи команду /play."
         )
-        return PLAY_AGAIN
+        return ConversationHandler.END
 
+    # поражение
     if attempts >= 6:
+        context.user_data.clear()
         await update.message.reply_text(
             f"💔 Попытки закончились. Было слово «{secret}».\n"
-            "Сыграем ещё? (да/нет)"
+            "Чтобы начать новую игру, введи команду /play."
         )
-        return PLAY_AGAIN
+        return ConversationHandler.END
 
     return GUESSING
 
-async def play_again(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    answer = update.message.text.strip().lower()
-    if answer in ("да", "yes", "д"):
-        return await ask_length(update, context)
 
-    await update.message.reply_text("Окей, жду /play для новой игры.")
-    return ConversationHandler.END
+async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = context.user_data
 
-# ==== Новый: сброс прогресса ====
+    # вне игры
+    if "secret" not in data:
+        await update.message.reply_text(
+            "Сейчас эта команда не имеет смысла — начни игру: /play"
+        )
+        return
+
+    guesses = data.get("guesses", [])
+    alphabet = list("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
+
+    # если нет попыток — показываем все буквы белым
+    if not guesses:
+        await update.message.reply_text(UNK + " " + " ".join(alphabet))
+        return
+
+    status = compute_letter_status(data["secret"], guesses)
+
+    greens  = [ch for ch in alphabet if status.get(ch) == "green"]
+    yellows = [ch for ch in alphabet if status.get(ch) == "yellow"]
+    reds    = [ch for ch in alphabet if status.get(ch) == "red"]
+    unused  = [ch for ch in alphabet if ch not in status]
+
+    lines = []
+    if greens:  lines.append(GREEN  + " " + " ".join(greens))
+    if yellows: lines.append(YELLOW + " " + " ".join(yellows))
+    if reds:    lines.append(RED    + " " + " ".join(reds))
+    if unused:  lines.append(UNK    + " " + " ".join(unused))
+
+    await update.message.reply_text("\n".join(lines))
+
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text("Прогресс сброшен. Жду /play для новой игры.")
     return ConversationHandler.END
 
-# ==== Игнорирование /start и /play во время игры ====
 
-IGN_MSG = (
-    "Команды /start и /play не работают во время игры. "
-    "Если хочешь начать заново, нажми /reset."
-)
+async def reset_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Сейчас нечего сбрасывать — начните игру: /play")
 
-async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+IGN_MSG = "Команды /start и /play не работают во время игры — сначала /reset."
+
+
+async def ignore_during(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(IGN_MSG)
-    return ASK_LENGTH
+    return ASK_LENGTH  # остаёмся в текущем состоянии
 
-async def ignore_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(IGN_MSG)
-    return GUESSING
-
-async def ignore_playagain(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(IGN_MSG)
-    return PLAY_AGAIN
-
-# ==== Точка входа ====
 
 def main():
     token = os.getenv("BOT_TOKEN")
     if not token:
-        logger.error("BOT_TOKEN не установлен в окружении")
+        logger.error("BOT_TOKEN не установлен")
         return
 
     app = ApplicationBuilder().token(token).build()
 
-    # ConversationHandler с новыми командами
+    # ConversationHandler для /play
     conv = ConversationHandler(
         entry_points=[CommandHandler("play", ask_length)],
         states={
             ASK_LENGTH: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_length),
-                CommandHandler("start", ignore_ask),
-                CommandHandler("play", ignore_ask),
+                CommandHandler("start", ignore_during),
+                CommandHandler("play", ignore_during),
                 CommandHandler("reset", reset),
             ],
             GUESSING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
-                CommandHandler("start", ignore_guess),
-                CommandHandler("play", ignore_guess),
-                CommandHandler("reset", reset),
-            ],
-            PLAY_AGAIN: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, play_again),
-                CommandHandler("start", ignore_playagain),
-                CommandHandler("play", ignore_playagain),
+                CommandHandler("my_letters", my_letters),
+                CommandHandler("start", ignore_during),
+                CommandHandler("play", ignore_during),
                 CommandHandler("reset", reset),
             ],
         },
-        fallbacks=[
-            CommandHandler("start", start),
-            CommandHandler("reset", reset),
-        ],
+        fallbacks=[CommandHandler("reset", reset)],
     )
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("reset", reset))  # на случай, когда не в игре
     app.add_handler(conv)
 
+    # Глобальные команды
+    app.add_handler(CommandHandler("my_letters", my_letters))
+    app.add_handler(CommandHandler("reset", reset_global))
+    app.add_handler(CommandHandler("start", start))
+
+    # Запуск polling
     app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
