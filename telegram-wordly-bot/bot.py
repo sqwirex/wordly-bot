@@ -47,7 +47,15 @@ def make_feedback(secret: str, guess: str) -> str:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! Чтобы начать игру, отправь команду /play."
+        "Привет! Я Wordly Bot — угадай слово за 6 попыток.\n\n"
+	"/play — начать новую игру\n"
+	"/reset — сбросить текущую игру\n\n"
+	"Только не забывай, я еще учусь и не знаю некоторых слов!\n"
+	"Не расстраивайся если я ругаюсь на твое слово, мне есть чему учиться:)\n\n"
+	"Кстати, иногда я могу выключаться, потому что живу в грязном локальном контейнере, а не в уютном сервере:(\n"
+	"Поэтому если видишь, что я не отвечаю тебе, то вернись через какое-то время и нажми любую команду, чтобы проверить мое состояние\n\n"
+	"К сожалению после таких перезапусков я теряю память и забываю что мы играли с тобой в игру, так как создателю лень делать БД с сессиями игроков(\n"
+	"Поэтому после перезапуска придеться угадывать новое слово (х_х)"
     )
 
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -184,7 +192,7 @@ def main():
     app.add_handler(CommandHandler("reset", reset))  # на случай, когда не в игре
     app.add_handler(conv)
 
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
