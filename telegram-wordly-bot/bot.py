@@ -1,6 +1,7 @@
 import os
 import logging
 import random
+import pymorphy2
 import json
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +16,7 @@ from telegram.ext import (
     ConversationHandler,
     filters,
 )
-from wordfreq import iter_wordlist
+from wordfreq import iter_wordlist, zipf_frequency
 from dotenv import load_dotenv
 
 # Загрузка .env
@@ -70,7 +71,26 @@ def update_user_activity(user) -> None:
 
 # --- Константы и словарь ---
 ASK_LENGTH, GUESSING = range(2)
-WORDLIST = list(iter_wordlist("ru", wordlist="small"))
+
+# инициализация морфоанализатора
+morph = pymorphy2.MorphAnalyzer(lang="ru")
+
+# частотный порог (регулируйте по вкусу)
+ZIPF_THRESHOLD = 2.5
+
+WORDLIST = sorted({
+    w
+    for w in iter_wordlist("ru", wordlist="large")
+    if (
+        w.isalpha()
+        and 4 <= len(w) <= 11
+        and zipf_frequency(w, "ru") >= ZIPF_THRESHOLD  # вот он фильтр по частоте
+    )
+    # если нужны только существительные-леммы, добавьте проверку pymorphy2:
+    for p in [morph.parse(w)[0]]
+    if p.tag.POS == "NOUN" and p.normal_form == w
+})
+
 GREEN, YELLOW, RED, UNK = "🟩", "🟨", "🟥", "⬜"
 
 
