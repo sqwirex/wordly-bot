@@ -111,7 +111,12 @@ def update_user_activity(user) -> None:
     if uid not in users:
         users[uid] = {
             "first_name": user.first_name,
-            "stats": {"games_played": 0, "wins": 0, "losses": 0}
+            "stats": {
+                "games_played": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_rate": 0.0
+            }
         }
 
     u = users[uid]
@@ -233,9 +238,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Только не забывай: я ещё учусь и не знаю некоторых слов!\n"
         "Не расстраивайся, если я ругаюсь на твоё слово — мне есть чему учиться :)\n\n"
         "Кстати, иногда я могу «выключаться», потому что живу в контейнере!\n"
-        "Если я не отвечаю — попробуй позже и нажми любую команду.\n\n"
-        "После перезапуска я забываю прогресс, так что придётся начать заново (х_х).\n\n"
-	"И еще, не забывай, буква Ё ≠ Е. Удачи!"
+        "Если я не отвечаю — попробуй позже и нажми /play или /start, чтобы продолжить прервавшуюся игру.\n\n"
+        "И еще, не забывай, буква Ё ≠ Е. Удачи!"
     )
 
 async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
@@ -369,13 +373,15 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Обновляем пользовательскую статистику
         user_entry["stats"]["games_played"] += 1
         user_entry["stats"]["wins"] += 1
+        wp = user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
+        user_entry["stats"]["win_rate"] = round(wp, 2)
 
         # Обновляем глобальную статистику
         store["global"]["total_games"]   = store["global"].get("total_games", 0) + 1
         store["global"]["total_wins"]    = store["global"].get("total_wins", 0) + 1
-        store["global"]["total_losses"]  = store["global"].get("total_losses", 0)
-        store["global"]["win_rate"]      = store["global"]["total_wins"] / store["global"]["total_games"]
-
+        gr = store["global"]["total_wins"] / store["global"]["total_games"]
+        store["global"]["win_rate"]      = round(gr, 2)
+        
         await update.message.reply_text(
             f"🎉 Поздравляю! Угадал за {cg['attempts']} {'попытка' if cg['attempts']==1 else 'попытки' if 2<=cg['attempts']<=4 else 'попыток'}.\n"
             "Чтобы сыграть вновь, введи команду /play."
@@ -390,14 +396,14 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cg["attempts"] >= 6:
         user_entry["stats"]["games_played"] += 1
         user_entry["stats"]["losses"] += 1
+        wp = user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
+        user_entry["stats"]["win_rate"] = round(wp, 2)
 
         store["global"]["total_games"]   = store["global"].get("total_games", 0) + 1
-        store["global"]["total_wins"]    = store["global"].get("total_wins", 0)
         store["global"]["total_losses"]  = store["global"].get("total_losses", 0) + 1
-        store["global"]["win_rate"]      = (
-            store["global"]["total_wins"] / store["global"]["total_games"]
-            if store["global"]["total_games"] else 0
-        )
+        if store["global"]["total_games"]:
+            gr = store["global"]["total_wins"] / store["global"]["total_games"]
+            store["global"]["win_rate"] = round(gr, 2)
 
         await update.message.reply_text(
             f"💔 Попытки закончились. Было слово «{secret}».\n"
