@@ -1,0 +1,47 @@
+name: 🚀 Auto-Deploy to Yandex VM
+
+on:
+  push:
+    branches:
+      - main   # или любая ветка, по которой деплоить
+
+jobs:
+  deploy:
+    name: Deploy to Yandex VM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}      # ваш приватный SSH-ключ в GitHub Secrets
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            cd ~/site-for-mpu/telegram-wordly-bot
+
+            echo "=== Pull latest changes ==="
+            git pull origin main
+
+            echo "=== Stop & remove old container (if exists) ==="
+            if docker ps -q --filter name=wordly-bot; then
+              docker rm -f wordly-bot
+            fi
+
+            echo "=== Build new image ==="
+            docker build -t wordly-bot .
+
+            echo "=== Run new container ==="
+            docker run -d \
+              --name wordly-bot \
+              --restart unless-stopped \
+              --env-file .env \
+              -v "$(pwd)/user_activity.json":/app/user_activity.json \
+              wordly-bot
+
+            echo "=== Logs (last 20 lines) ==="
+            docker logs --tail 20 wordly-bot
