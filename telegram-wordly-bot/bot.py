@@ -524,6 +524,7 @@ def main():
     # Глобальные
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("my_letters", my_letters_not_allowed))
 
     store = load_store()
     # Для каждого пользователя, у которого был current_game, 
