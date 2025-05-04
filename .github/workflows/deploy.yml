@@ -44,7 +44,7 @@ jobs:
 
             echo "=== SITE: Pull code & reload nginx ==="
             cd ~/site-for-mpu/site
-            git pull origin main
+            sudo -u sqwirex git pull origin main
 
             # Reload nginx to pick up new static files
             sudo nginx -s reload
