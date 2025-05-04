@@ -36,10 +36,9 @@ VOCAB_FILE = Path("vocabulary.json")
 
 def load_store() -> dict:
     """
-    Загружает user_activity.json, мигрирует старую плоскую структуру:
-    — переносит все корневые цифровые ключи внутрь data['users']
-    — для каждого пользователя создаёт поле 'stats', если его нет
-    — гарантирует разделы 'users' и 'global'
+    Просто загружает user_activity.json в двухсекционной структуре.
+    Если файл не существует, пуст или битый — возвращает шаблон.
+    Не делает никакой миграции старых ключей.
     """
     template = {
         "users": {},
@@ -51,68 +50,48 @@ def load_store() -> dict:
         }
     }
 
-    # Если файла нет или пустой — создаём начальный шаблон
     if not USER_FILE.exists():
-        save_store(template)
         return template
 
     raw = USER_FILE.read_text("utf-8").strip()
     if not raw:
-        save_store(template)
         return template
 
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        logger.warning(f"{USER_FILE} содержит некорректный JSON, сбрасываем в шаблон")
-        save_store(template)
         return template
 
-    migrated = False
+    # Убедимся, что структура корректна
+    if not isinstance(data, dict):
+        return template
+    users = data.get("users")
+    global_ = data.get("global")
+    if not isinstance(users, dict) or not isinstance(global_, dict):
+        return template
 
-    # 1) Переносим все корневые ID внутрь data['users']
-    for key in list(data.keys()):
-        if key.isdigit() and key not in ("users", "global"):
-            user_rec = data.pop(key)
-            # инициализируем stats, если его нет
-            user_rec.setdefault("stats", {"games_played": 0, "wins": 0, "losses": 0})
-            # переносим
-            data.setdefault("users", {})[key] = user_rec
-            migrated = True
+    # Типы полей в global
+    for key in ("total_games", "total_wins", "total_losses", "win_rate"):
+        if key not in global_:
+            global_[key] = template["global"][key]
 
-    # 2) Убеждаемся, что data['users'] есть и это dict
-    if "users" not in data or not isinstance(data["users"], dict):
-        data["users"] = template["users"].copy()
-        migrated = True
-    else:
-        # для уже существующих записей тоже убедимся, что есть stats
-        for uid, urec in data["users"].items():
-            if "stats" not in urec or not isinstance(urec["stats"], dict):
-                urec["stats"] = {"games_played": 0, "wins": 0, "losses": 0}
-                migrated = True
-
-    # 3) Гарантируем раздел 'global' и все его поля
-    if "global" not in data or not isinstance(data["global"], dict):
-        data["global"] = template["global"].copy()
-        migrated = True
-    else:
-        for k, v in template["global"].items():
-            if k not in data["global"]:
-                data["global"][k] = v
-                migrated = True
-
-    # 4) Если была миграция — сохраняем сразу
-    if migrated:
-        save_store(data)
-        logger.info(f"{USER_FILE} мигрирован в новую структуру (все профили в 'users', добавлены 'stats')")
-
-    return data
+    return {"users": users, "global": global_}
 
 
-
-def save_store(store: dict):
-    USER_FILE.write_text(json.dumps(store, ensure_ascii=False, indent=2), "utf-8")
-
+def save_store(store: dict) -> None:
+    """
+    Записывает store в user_activity.json.
+    Ожидается формат:
+    {
+      "users": { ... },
+      "global": { ... }
+    }
+    """
+    USER_FILE.write_text(
+        json.dumps(store, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+    
 def load_user_activity() -> dict:
     """
     Загружает user_activity.json.
@@ -263,22 +242,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
     """
-    Периодически (и сразу при старте) шлёт содержимое user_activity.json администратору.
+    Периодически (и сразу при старте) шлёт user_activity.json администратору.
+    Если файл слишком большой, шлёт его как документ.
     """
     ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
     activity_path = USER_FILE
     if not activity_path.exists():
         return
 
-    # Читаем весь JSON как текст
     content = activity_path.read_text(encoding="utf-8")
+    # Ограничение Telegram — примерно 4096 символов
+    MAX_LEN = 4000
 
-    # Отправляем как сообщение в виде моноширинного блока
-    await context.bot.send_message(
-        chat_id=ADMIN_ID,
-        text=f"📋 Текущий user_activity.json:\n<pre>{content}</pre>",
-        parse_mode="HTML"
-    )
+    if len(content) <= MAX_LEN:
+        # Можно втиснуть в одно сообщение
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"📋 Текущий user_activity.json:\n<pre>{content}</pre>",
+            parse_mode="HTML"
+        )
+    else:
+        # Слишком длинное — отправляем как файл
+        from telegram import InputFile
+        with activity_path.open("rb") as f:
+            await context.bot.send_document(
+                chat_id=ADMIN_ID,
+                document=InputFile(f, filename="user_activity.json"),
+                caption="📁 user_activity.json (слишком большой для текста)"
+            )
 
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store = load_store()
