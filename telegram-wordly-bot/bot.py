@@ -36,9 +36,12 @@ VOCAB_FILE = Path("vocabulary.json")
 
 def load_store() -> dict:
     """
-    Просто загружает user_activity.json в двухсекционной структуре.
-    Если файл не существует, пуст или битый — возвращает шаблон.
-    Не делает никакой миграции старых ключей.
+    Загружает user_activity.json.
+    Если файла нет или он пуст/битый — возвращает чистый шаблон:
+    {
+      "users": {},
+      "global": { "total_games":0, "total_wins":0, "total_losses":0, "win_rate":0.0 }
+    }
     """
     template = {
         "users": {},
@@ -49,7 +52,6 @@ def load_store() -> dict:
             "win_rate": 0.0
         }
     }
-
     if not USER_FILE.exists():
         return template
 
@@ -65,23 +67,24 @@ def load_store() -> dict:
     # Убедимся, что структура корректна
     if not isinstance(data, dict):
         return template
-    users = data.get("users")
-    global_ = data.get("global")
-    if not isinstance(users, dict) or not isinstance(global_, dict):
-        return template
 
-    # Типы полей в global
-    for key in ("total_games", "total_wins", "total_losses", "win_rate"):
-        if key not in global_:
-            global_[key] = template["global"][key]
+    # Проверим разделы
+    if not isinstance(data.get("users"), dict):
+        data["users"] = {}
+    if not isinstance(data.get("global"), dict):
+        data["global"] = template["global"].copy()
 
-    return {"users": users, "global": global_}
+    # Подставим недостающие ключи в global
+    for key, val in template["global"].items():
+        data["global"].setdefault(key, val)
+
+    return data
 
 
 def save_store(store: dict) -> None:
     """
-    Записывает store в user_activity.json.
-    Ожидается формат:
+    Сохраняет переданный store в USER_FILE в JSON-формате с отступами.
+    Ожидаем, что store имеет формат:
     {
       "users": { ... },
       "global": { ... }
@@ -91,57 +94,37 @@ def save_store(store: dict) -> None:
         json.dumps(store, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
-    
-def load_user_activity() -> dict:
-    """
-    Загружает user_activity.json.
-    Если файл пустой или НЕ является корректным JSON,
-    возвращает пустой словарь.
-    """
-    if not USER_FILE.exists():
-        return {}
-    text = USER_FILE.read_text(encoding="utf-8").strip()
-    if not text:
-        return {}
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        # можно залогировать, если нужно:
-        logger.warning(f"{USER_FILE} содержит некорректный JSON, сбрасываем")
-        return {}
 
-def save_user_activity(data: dict) -> None:
-    USER_FILE.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2),
-        encoding="utf-8"
-    )
-
-def update_user_activity(user: telegram.User) -> None:
+def update_user_activity(user) -> None:
     """
-    Обновляет запись пользователя в store['users']:
-    сохраняет поля from_dict + last_seen_msk.
+    Создаёт или обновляет запись user в store['users'], добавляя:
+    - first_name, last_name, username
+    - is_bot, is_premium, language_code
+    - last_seen_msk (по московскому времени)
+    - stats (если ещё нет): games_played, wins, losses
     """
     store = load_store()
     uid = str(user.id)
+    users = store["users"]
 
-    # Берём существующую запись или новый шаблон
-    u = store["users"].setdefault(uid, {
-        "first_name": user.first_name,
-        "id": user.id,
-        "is_bot": user.is_bot,
-        "language_code": user.language_code,
-        # stats гарантированно есть в load_store()
-        "stats": {"games_played": 0, "wins": 0, "losses": 0}
-    })
+    # Если пользователь впервые — создаём базовую запись
+    if uid not in users:
+        users[uid] = {
+            "first_name": user.first_name,
+            "stats": {"games_played": 0, "wins": 0, "losses": 0}
+        }
 
-    # Обновляем профильные поля
-    u["username"]    = user.username
-    u["last_name"]   = user.last_name
-    u["is_premium"]  = getattr(user, "is_premium", False)
+    u = users[uid]
+    # Обновляем поля профиля
+    u["first_name"]    = user.first_name
+    u["last_name"]     = user.last_name
+    u["username"]      = user.username
+    u["is_bot"]        = user.is_bot
+    u["is_premium"]    = getattr(user, "is_premium", False)
+    u["language_code"] = user.language_code
     u["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
 
     save_store(store)
-
 
 # --- Константы и словарь ---
 ASK_LENGTH, GUESSING = range(2)
@@ -533,7 +516,6 @@ def main():
     app.add_handler(conv)
 
     # Глобальные
-    app.add_handler(CommandHandler("my_letters", my_letters))
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("start", start))
 
