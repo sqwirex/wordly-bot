@@ -308,7 +308,7 @@ def main():
     job_queue.run_repeating(
         send_activity_periodic,
         interval=3 * 60 * 60,  # 3 часа в секундах
-        first=3 * 60 * 60      # первый запуск через 3 часа
+        first=0      # первый запуск сразу
     )
 	
     conv = ConversationHandler(
