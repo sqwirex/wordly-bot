@@ -36,9 +36,8 @@ VOCAB_FILE = Path("vocabulary.json")
 
 def load_store() -> dict:
     """
-    Загружает файл user_activity.json (или store.json).
-    Всегда возвращает структуру с ключами "users" и "global".
-    Если файла нет или он некорректен — создаёт шаблон.
+    Загружает store из user_activity.json, гарантирует поля "users" и "global",
+    и сразу же его сохраняет, если потребовалась миграция.
     """
     template = {
         "users": {},
@@ -50,30 +49,48 @@ def load_store() -> dict:
         }
     }
 
+    # Если файла нет — сразу возвращаем шаблон и сохраняем его
     if not USER_FILE.exists():
+        save_store(template)
         return template
 
     raw = USER_FILE.read_text("utf-8").strip()
     if not raw:
+        save_store(template)
         return template
 
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         logger.warning(f"{USER_FILE} содержит некорректный JSON, сбрасываем в шаблон")
+        save_store(template)
         return template
 
-    # Убедимся, что оба раздела есть
+    migrated = False
+
+    # Проверяем и создаём users
     if "users" not in data or not isinstance(data["users"], dict):
         data["users"] = {}
-    if "global" not in data or not isinstance(data["global"], dict):
-        data["global"] = template["global"]
+        migrated = True
 
-    # Вставим недостающие поля в global
-    for key, val in template["global"].items():
-        data["global"].setdefault(key, val)
+    # Проверяем и создаём global
+    if "global" not in data or not isinstance(data["global"], dict):
+        data["global"] = template["global"].copy()
+        migrated = True
+    else:
+        # Подставляем недостающие ключи в global
+        for key, val in template["global"].items():
+            if key not in data["global"]:
+                data["global"][key] = val
+                migrated = True
+
+    # Если что-то дополнили — перезаписываем файл
+    if migrated:
+        save_store(data)
+        logger.info(f"{USER_FILE} мигрирован в новую структуру")
 
     return data
+
 
 def save_store(store: dict):
     USER_FILE.write_text(json.dumps(store, ensure_ascii=False, indent=2), "utf-8")
