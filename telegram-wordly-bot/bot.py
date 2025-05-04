@@ -412,6 +412,10 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_store(store)
     return GUESSING
 
+async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Эту команду можно использовать только во время игры.")
+    return ASK_LENGTH
+
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем профиль пользователя
     update_user_activity(update.effective_user)
@@ -491,7 +495,10 @@ def main():
     )
 	
     conv = ConversationHandler(
-        entry_points=[CommandHandler("play", ask_length)],
+        entry_points=[
+            CommandHandler("play", ask_length),
+            CommandHandler("start", start)
+        ],
         states={
             ASK_LENGTH: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_length),
@@ -499,6 +506,7 @@ def main():
                 CommandHandler("play", ignore_ask),
                 CommandHandler("reset", reset),
 		        CommandHandler("my_letters", my_letters_during_length),
+                CommandHandler("my_letters", my_letters_not_allowed),
             ],
             GUESSING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
