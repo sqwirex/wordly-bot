@@ -414,35 +414,33 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    update_user_activity(update.effective_user)
-    store = load_store()
-    u = store["users"].get(str(update.effective_user.id), {})
-    if "current_game" in u:
-        cg = u["current_game"]
-        # заполняем context.user_data из cg:
-        context.user_data.update({
-            "secret": cg["secret"],
-            "length": len(cg["secret"]),
-            "attempts": cg["attempts"],
-            "guesses": cg["guesses"],
-        })
-        await update.message.reply_text(
-            f"У тебя есть незавершённая игра: {len(cg['secret'])}-буквенное слово, ты на попытке {cg['attempts']}. Вводи догадку:"
-        )
-        return GUESSING
-    
-    data = context.user_data
-    if "secret" not in data:
-        await update.message.reply_text("Сейчас эта команда не имеет смысла — начни игру: /play")
-        return
-    guesses = data.get("guesses", [])
-    alphabet = list("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
+    # Обновляем профиль пользователя
+    update_user_profile(update.effective_user)
 
+    # Загружаем общий store и берём запись пользователя
+    store = load_store()
+    uid = str(update.effective_user.id)
+    user = store["users"].get(uid)
+
+    # Если игры нет вовсе — запрещаем команду
+    if not user or "current_game" not in user:
+        await update.message.reply_text("Эту команду можно использовать только во время игры.")
+        return
+
+    # Игра есть — достаём её состояние
+    cg = user["current_game"]
+    guesses = cg.get("guesses", [])
+    secret = cg["secret"]
+
+    # Если ни одной попытки ещё не было — все буквы неизвестны
+    alphabet = list("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
     if not guesses:
         await update.message.reply_text(UNK + " " + " ".join(alphabet))
         return
 
-    status = compute_letter_status(data["secret"], guesses)
+    # Вычисляем статус букв по всем сделанным догадкам
+    status = compute_letter_status(secret, guesses)
+
     greens  = [ch for ch in alphabet if status.get(ch) == "green"]
     yellows = [ch for ch in alphabet if status.get(ch) == "yellow"]
     reds    = [ch for ch in alphabet if status.get(ch) == "red"]
