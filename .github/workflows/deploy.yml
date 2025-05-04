@@ -45,3 +45,6 @@ jobs:
 
             echo "=== Logs (last 20 lines) ==="
             docker logs --tail 20 wordly-bot
+
+            echo "=== Prune dangling images ==="
+            docker image prune --force
