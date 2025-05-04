@@ -1,5 +1,5 @@
 # requirements.txt
-python-telegram-bot~=20.0
+python-telegram-bot[job-queue]
 wordfreq
 python-dotenv
 pymorphy2
