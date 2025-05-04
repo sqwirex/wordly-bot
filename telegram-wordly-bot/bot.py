@@ -432,9 +432,9 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🧑 Ваши результаты:\n"
         f"– Всего игр: {s.get('games_played',0)}\n"
-        f"– Побед:    {s.get('wins',0)}\n"
-        f"– Поражений:{s.get('losses',0)}\n"
-        f"– Процент:  {s.get('win_rate',0.0)*100:.2f}%"
+        f"– Побед: {s.get('wins',0)}\n"
+        f"– Поражений: {s.get('losses',0)}\n"
+        f"– Процент: {s.get('win_rate',0.0)*100:.2f}%"
     )
 
 async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -450,9 +450,9 @@ async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🌐 Глобальная статистика:\n"
         f"– Всего игр: {g['total_games']}\n"
-        f"– Побед:    {g['total_wins']}\n"
-        f"– Поражений:{g['total_losses']}\n"
-        f"– Процент:  {g['win_rate']*100:.2f}%"
+        f"– Побед: {g['total_wins']}\n"
+        f"– Поражений: {g['total_losses']}\n"
+        f"– Процент: {g['win_rate']*100:.2f}%"
     )
 
 async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
