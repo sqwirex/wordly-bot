@@ -412,7 +412,6 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_store(store)
     return GUESSING
 
-
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем профиль пользователя
     update_user_activity(update.effective_user)
@@ -499,7 +498,7 @@ def main():
                 CommandHandler("start", ignore_ask),
                 CommandHandler("play", ignore_ask),
                 CommandHandler("reset", reset),
-		CommandHandler("my_letters", my_letters_during_length),
+		        CommandHandler("my_letters", my_letters_during_length),
             ],
             GUESSING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
