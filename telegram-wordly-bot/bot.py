@@ -234,7 +234,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Привет! Я Wordly Bot — угадай слово за 6 попыток.\n\n"
         "/play — начать новую игру\n"
         "/my_letters — показать статус букв во время игры\n"
-        "/reset — сбросить текущую игру\n\n"
+        "/reset — сбросить текущую игру\n"
+        "/my_stats — посмотреть свою статистику\n"
+        "/global_stats — посмотреть глобальную статистику за все время\n\n"
         "Только не забывай: я ещё учусь и не знаю некоторых слов!\n"
         "Не расстраивайся, если я ругаюсь на твоё слово — мне есть чему учиться :)\n\n"
         "Кстати, иногда я могу «выключаться», потому что живу в контейнере!\n"
@@ -418,6 +420,41 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_store(store)
     return GUESSING
 
+async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает личную статистику — только вне игры."""
+    store = load_store()
+    uid = str(update.effective_user.id)
+    user = store["users"].get(uid)
+    if not user or "current_game" in user:
+        await update.message.reply_text("Эту команду можно использовать только вне игры.")
+        return
+    s = user.get("stats", {})
+    await update.message.reply_text(
+        f"🧑 Ваши результаты:\n"
+        f"– Всего игр: {s.get('games_played',0)}\n"
+        f"– Побед:    {s.get('wins',0)}\n"
+        f"– Поражений:{s.get('losses',0)}\n"
+        f"– Процент:  {s.get('win_rate',0.0)*100:.2f}%"
+    )
+
+async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает глобальную статистику — только вне игры."""
+    store = load_store()
+    g = store["global"]
+    # если во время партии — запрет
+    uid = str(update.effective_user.id)
+    user = store["users"].get(uid)
+    if user and "current_game" in user:
+        await update.message.reply_text("Эту команду можно использовать только вне игры.")
+        return
+    await update.message.reply_text(
+        f"🌐 Глобальная статистика:\n"
+        f"– Всего игр: {g['total_games']}\n"
+        f"– Побед:    {g['total_wins']}\n"
+        f"– Поражений:{g['total_losses']}\n"
+        f"– Процент:  {g['win_rate']*100:.2f}%"
+    )
+
 async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Эту команду можно использовать только во время игры.")
     # остаёмся в том же состоянии ASK_LENGTH
@@ -463,6 +500,11 @@ async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("\n".join(lines))
     return GUESSING
+
+async def stats_not_allowed_during(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Эту команду можно использовать только вне игры.")
+    # возвращаем текущее состояние разговора, которое лежит в context.user_data
+    return context.user_data.get("state", ASK_LENGTH)
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
@@ -512,6 +554,8 @@ def main():
                 CommandHandler("start", ignore_ask),
                 CommandHandler("play", ignore_ask),
                 CommandHandler("reset", reset),
+                CommandHandler("my_stats", stats_not_allowed_during),
+                CommandHandler("global_stats", stats_not_allowed_during),
 		        CommandHandler("my_letters", my_letters_during_length),
                 CommandHandler("my_letters", my_letters_not_allowed),
             ],
@@ -519,6 +563,8 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
                 CommandHandler("my_letters", my_letters),
                 CommandHandler("start", ignore_guess),
+                CommandHandler("my_stats", stats_not_allowed_during),
+                CommandHandler("global_stats", stats_not_allowed_during),
                 CommandHandler("play", ignore_guess),
                 CommandHandler("reset", reset),
             ],
@@ -531,6 +577,8 @@ def main():
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("my_letters", my_letters_not_allowed))
+    app.add_handler(CommandHandler("my_stats",    my_stats))
+    app.add_handler(CommandHandler("global_stats",global_stats))
 
     store = load_store()
     # Для каждого пользователя, у которого был current_game, 
