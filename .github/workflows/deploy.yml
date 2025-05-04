@@ -1,41 +1,40 @@
-name: 🚀 Auto-Deploy to Yandex VM
+# .github/workflows/deploy.yml
+name: 🚀 Auto-Deploy Bot & Site
 
 on:
   push:
     branches:
-      - main   # или любая ветка, по которой деплоить
+      - main
 
 jobs:
   deploy:
-    name: Deploy to Yandex VM
+    name: Deploy Bot and Static Site
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Deploy via SSH
+      - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}      # ваш приватный SSH-ключ в GitHub Secrets
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
             set -e
-            cd ~/site-for-mpu/telegram-wordly-bot
 
-            echo "=== Pull latest changes ==="
+            echo "=== BOT: Pull code & restart container ==="
+            cd ~/site-for-mpu/telegram-wordly-bot
             git pull origin main
 
-            echo "=== Stop & remove old container (if exists) ==="
+            # Stop and remove old container if exists
             if docker ps -q --filter name=wordly-bot; then
               docker rm -f wordly-bot
             fi
 
-            echo "=== Build new image ==="
+            # Build and run new bot image
             docker build -t wordly-bot .
-
-            echo "=== Run new container ==="
             docker run -d \
               --name wordly-bot \
               --restart unless-stopped \
@@ -43,7 +42,15 @@ jobs:
               -v "$(pwd)/user_activity.json":/app/user_activity.json \
               wordly-bot
 
-            echo "=== Logs (last 20 lines) ==="
+            echo "=== SITE: Pull code & reload nginx ==="
+            cd ~/site-for-mpu/site
+            git pull origin main
+
+            # Reload nginx to pick up new static files
+            sudo nginx -s reload
+
+            echo "✅ Deployment complete"
+
             docker logs --tail 20 wordly-bot
 
             echo "=== Prune dangling images ==="
