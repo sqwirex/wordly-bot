@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
+from telegram import InputFile
 
 from telegram import Update
 from telegram.ext import (
@@ -158,6 +159,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "После перезапуска я забываю прогресс, так что придётся начать заново (х_х)."
     )
 
+async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
+     """
+     Периодически (каждые 3 часа) шлём юзер-активити администратору.
+     """
+     ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))  # ваш ID
+     if update.effective_user.id != ADMIN_ID:
+         return
+     activity_path = Path("user_activity.json")
+     if not activity_path.exists():
+         return
+     # Открываем файл и отправляем как документ
+     with activity_path.open("rb") as f:
+         await context.bot.send_document(
+             chat_id=ADMIN_ID,
+             document=InputFile(f, filename="user_activity.json"),
+             caption="Текущий файл user_activity.json"
+         )
+
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     await update.message.reply_text("Сколько букв в слове? (4–11)")
@@ -283,7 +302,15 @@ def main():
         return
 
     app = ApplicationBuilder().token(token).build()
-
+	
+    # Запускаем фоновую задачу: каждые 3 часа шлём user_activity.json админу
+    job_queue = app.job_queue
+    job_queue.run_repeating(
+        send_activity_periodic,
+        interval=3 * 60 * 60,  # 3 часа в секундах
+        first=3 * 60 * 60      # первый запуск через 3 часа
+    )
+	
     conv = ConversationHandler(
         entry_points=[CommandHandler("play", ask_length)],
         states={
