@@ -35,11 +35,45 @@ USER_FILE = Path("user_activity.json")
 VOCAB_FILE = Path("vocabulary.json")
 
 def load_store() -> dict:
-    if not USER_FILE.exists(): return {"users": {}, "global": {...}}
+    """
+    Загружает файл user_activity.json (или store.json).
+    Всегда возвращает структуру с ключами "users" и "global".
+    Если файла нет или он некорректен — создаёт шаблон.
+    """
+    template = {
+        "users": {},
+        "global": {
+            "total_games": 0,
+            "total_wins": 0,
+            "total_losses": 0,
+            "win_rate": 0.0
+        }
+    }
+
+    if not USER_FILE.exists():
+        return template
+
+    raw = USER_FILE.read_text("utf-8").strip()
+    if not raw:
+        return template
+
     try:
-        return json.loads(USER_FILE.read_text("utf-8"))
+        data = json.loads(raw)
     except json.JSONDecodeError:
-        return {"users": {}, "global": {"total_games": 0, "total_wins": 0, "total_losses": 0, "win_rate": 0.0}}
+        logger.warning(f"{USER_FILE} содержит некорректный JSON, сбрасываем в шаблон")
+        return template
+
+    # Убедимся, что оба раздела есть
+    if "users" not in data or not isinstance(data["users"], dict):
+        data["users"] = {}
+    if "global" not in data or not isinstance(data["global"], dict):
+        data["global"] = template["global"]
+
+    # Вставим недостающие поля в global
+    for key, val in template["global"].items():
+        data["global"].setdefault(key, val)
+
+    return data
 
 def save_store(store: dict):
     USER_FILE.write_text(json.dumps(store, ensure_ascii=False, indent=2), "utf-8")
