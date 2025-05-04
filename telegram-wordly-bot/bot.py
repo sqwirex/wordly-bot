@@ -415,7 +415,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем профиль пользователя
-    update_user_profile(update.effective_user)
+    update_user_activity(update.effective_user)
 
     # Загружаем общий store и берём запись пользователя
     store = load_store()
