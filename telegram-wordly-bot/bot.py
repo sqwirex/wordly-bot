@@ -182,7 +182,12 @@ async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     await update.message.reply_text("Сколько букв в слове? (4–11)")
     return ASK_LENGTH
-
+	
+async def my_letters_during_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Пользователь нажал /my_letters до того, как выбрал длину
+    await update.message.reply_text("Нужно ввести число от 4 до 11.")
+    return ASK_LENGTH
+	
 async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     text = update.message.text.strip()
@@ -320,6 +325,7 @@ def main():
                 CommandHandler("start", ignore_ask),
                 CommandHandler("play", ignore_ask),
                 CommandHandler("reset", reset),
+		CommandHandler("my_letters", my_letters_during_length),
             ],
             GUESSING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
