@@ -11,10 +11,10 @@ docker build -t wordly-bot .
 docker run -d \
   --name wordly-bot \
   --env-file .env \
-  -v ~/telegram-wordly-bot/user_activity.json:/app/user_activity.json \
+  -v "$(pwd)/user_activity.json":/app/user_activity.json \
   wordly-bot
 ## Шаг четвертый: проверить логи на наличие ошибок
-docker logs -f wordle-bot
+docker logs -f wordly-bot
 
 ## В images будет 2 образа, python и wordly-bot, в запущенных/остановленных контах будет wordly-bot
 ## Если вносятся изменения в код и тд, делаем шаг 2, потом удаляем конт:
