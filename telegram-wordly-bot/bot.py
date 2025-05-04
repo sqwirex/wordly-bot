@@ -420,7 +420,7 @@ async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_T
 
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем профиль пользователя
-    update_user_profile(update.effective_user)
+    update_user_activity(update.effective_user)
 
     store = load_store()
     uid = str(update.effective_user.id)
