@@ -36,8 +36,9 @@ VOCAB_FILE = Path("vocabulary.json")
 
 def load_store() -> dict:
     """
-    Загружает store из user_activity.json, гарантирует поля "users" и "global",
-    и сразу же его сохраняет, если потребовалась миграция.
+    Загружает user_activity.json, переносит старые профили из корневых ключей
+    внутрь data['users'], дополняет инициализирует data['global'], и сохраняет
+    файл, если потребовалась миграция.
     """
     template = {
         "users": {},
@@ -49,7 +50,7 @@ def load_store() -> dict:
         }
     }
 
-    # Если файла нет — сразу возвращаем шаблон и сохраняем его
+    # Если файла нет, создаём полный шаблон
     if not USER_FILE.exists():
         save_store(template)
         return template
@@ -68,26 +69,36 @@ def load_store() -> dict:
 
     migrated = False
 
-    # Проверяем и создаём users
+    # 1) Переносим полностью каждую старую запись-пользователя в data['users']
+    for key in list(data.keys()):
+        if key.isdigit() and key not in ("users", "global"):
+            user_rec = data.pop(key)
+            # Если уже есть data['users'][key], то оставляем его (не перезаписываем)
+            if "users" not in data:
+                data["users"] = {}
+            if key not in data["users"]:
+                data["users"][key] = user_rec
+            migrated = True
+
+    # 2) Гарантируем раздел 'users'
     if "users" not in data or not isinstance(data["users"], dict):
-        data["users"] = {}
+        data["users"] = template["users"].copy()
         migrated = True
 
-    # Проверяем и создаём global
+    # 3) Гарантируем раздел 'global' и все его поля
     if "global" not in data or not isinstance(data["global"], dict):
         data["global"] = template["global"].copy()
         migrated = True
     else:
-        # Подставляем недостающие ключи в global
-        for key, val in template["global"].items():
-            if key not in data["global"]:
-                data["global"][key] = val
+        for k, v in template["global"].items():
+            if k not in data["global"]:
+                data["global"][k] = v
                 migrated = True
 
-    # Если что-то дополнили — перезаписываем файл
+    # Если что‑то изменилось — сохраняем обновлённый файл
     if migrated:
         save_store(data)
-        logger.info(f"{USER_FILE} мигрирован в новую структуру")
+        logger.info(f"{USER_FILE} мигрирован в новую структуру (перенесены старые записи)")
 
     return data
 
