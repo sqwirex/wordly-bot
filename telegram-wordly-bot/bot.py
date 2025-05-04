@@ -232,7 +232,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "Привет! Я Wordly Bot — угадай слово за 6 попыток.\n\n"
-        "/play — начать новую игру\n"
+        "/play — начать или продолжить игру\n"
         "/my_letters — показать статус букв во время игры\n"
         "/reset — сбросить текущую игру\n"
         "/my_stats — посмотреть свою статистику\n"
@@ -431,10 +431,10 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     s = user.get("stats", {})
     await update.message.reply_text(
         f"🧑 Ваши результаты:\n"
-        f"– Всего игр: {s.get('games_played',0)}\n"
-        f"– Побед: {s.get('wins',0)}\n"
-        f"– Поражений: {s.get('losses',0)}\n"
-        f"– Процент: {s.get('win_rate',0.0)*100:.2f}%"
+        f"🎲 Всего игр: {s.get('games_played',0)}\n"
+        f"🏆 Побед: {s.get('wins',0)}\n"
+        f"💔 Поражений: {s.get('losses',0)}\n"
+        f"📊 Процент: {s.get('win_rate',0.0)*100:.2f}%"
     )
 
 async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -449,10 +449,10 @@ async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(
         f"🌐 Глобальная статистика:\n"
-        f"– Всего игр: {g['total_games']}\n"
-        f"– Побед: {g['total_wins']}\n"
-        f"– Поражений: {g['total_losses']}\n"
-        f"– Процент: {g['win_rate']*100:.2f}%"
+        f"🎲 Всего игр: {g['total_games']}\n"
+        f"🏆 Побед: {g['total_wins']}\n"
+        f"💔 Поражений: {g['total_losses']}\n"
+        f"📊 Процент: {g['win_rate']*100:.2f}%"
     )
 
 async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -504,7 +504,7 @@ async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stats_not_allowed_during(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Эту команду можно использовать только вне игры.")
     # возвращаем текущее состояние разговора, которое лежит в context.user_data
-    return context.user_data.get("state", ASK_LENGTH)
+    return context.user_data.get("state", context.user_data["state"])
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
@@ -577,8 +577,8 @@ def main():
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("my_letters", my_letters_not_allowed))
-    app.add_handler(CommandHandler("my_stats",    my_stats))
-    app.add_handler(CommandHandler("global_stats",global_stats))
+    app.add_handler(CommandHandler("my_stats", my_stats))
+    app.add_handler(CommandHandler("global_stats", global_stats))
 
     store = load_store()
     # Для каждого пользователя, у которого был current_game, 
