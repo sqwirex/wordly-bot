@@ -414,36 +414,36 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Эту команду можно использовать только во время игры.")
+    # остаёмся в том же состоянии ASK_LENGTH
     return ASK_LENGTH
+
 
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем профиль пользователя
-    update_user_activity(update.effective_user)
+    update_user_profile(update.effective_user)
 
-    # Загружаем общий store и берём запись пользователя
     store = load_store()
     uid = str(update.effective_user.id)
     user = store["users"].get(uid)
 
-    # Если игры нет вовсе — запрещаем команду
+    # Если игры нет вовсе — запрещаем, возвращаемся в GUESSING, 
+    # но обработчик my_letters_not_allowed в ASK_LENGTH
     if not user or "current_game" not in user:
         await update.message.reply_text("Эту команду можно использовать только во время игры.")
-        return
+        return GUESSING
 
-    # Игра есть — достаём её состояние
     cg = user["current_game"]
     guesses = cg.get("guesses", [])
     secret = cg["secret"]
 
-    # Если ни одной попытки ещё не было — все буквы неизвестны
     alphabet = list("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
+
+    # Если ни одной попытки ещё не было — все буквы неизвестны
     if not guesses:
         await update.message.reply_text(UNK + " " + " ".join(alphabet))
-        return
+        return GUESSING
 
-    # Вычисляем статус букв по всем сделанным догадкам
     status = compute_letter_status(secret, guesses)
-
     greens  = [ch for ch in alphabet if status.get(ch) == "green"]
     yellows = [ch for ch in alphabet if status.get(ch) == "yellow"]
     reds    = [ch for ch in alphabet if status.get(ch) == "red"]
@@ -456,6 +456,7 @@ async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if unused:  lines.append(UNK    + " " + " ".join(unused))
 
     await update.message.reply_text("\n".join(lines))
+    return GUESSING
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
