@@ -36,9 +36,10 @@ VOCAB_FILE = Path("vocabulary.json")
 
 def load_store() -> dict:
     """
-    Загружает user_activity.json, переносит старые профили из корневых ключей
-    внутрь data['users'], дополняет инициализирует data['global'], и сохраняет
-    файл, если потребовалась миграция.
+    Загружает user_activity.json, мигрирует старую плоскую структуру:
+    — переносит все корневые цифровые ключи внутрь data['users']
+    — для каждого пользователя создаёт поле 'stats', если его нет
+    — гарантирует разделы 'users' и 'global'
     """
     template = {
         "users": {},
@@ -50,7 +51,7 @@ def load_store() -> dict:
         }
     }
 
-    # Если файла нет, создаём полный шаблон
+    # Если файла нет или пустой — создаём начальный шаблон
     if not USER_FILE.exists():
         save_store(template)
         return template
@@ -69,21 +70,26 @@ def load_store() -> dict:
 
     migrated = False
 
-    # 1) Переносим полностью каждую старую запись-пользователя в data['users']
+    # 1) Переносим все корневые ID внутрь data['users']
     for key in list(data.keys()):
         if key.isdigit() and key not in ("users", "global"):
             user_rec = data.pop(key)
-            # Если уже есть data['users'][key], то оставляем его (не перезаписываем)
-            if "users" not in data:
-                data["users"] = {}
-            if key not in data["users"]:
-                data["users"][key] = user_rec
+            # инициализируем stats, если его нет
+            user_rec.setdefault("stats", {"games_played": 0, "wins": 0, "losses": 0})
+            # переносим
+            data.setdefault("users", {})[key] = user_rec
             migrated = True
 
-    # 2) Гарантируем раздел 'users'
+    # 2) Убеждаемся, что data['users'] есть и это dict
     if "users" not in data or not isinstance(data["users"], dict):
         data["users"] = template["users"].copy()
         migrated = True
+    else:
+        # для уже существующих записей тоже убедимся, что есть stats
+        for uid, urec in data["users"].items():
+            if "stats" not in urec or not isinstance(urec["stats"], dict):
+                urec["stats"] = {"games_played": 0, "wins": 0, "losses": 0}
+                migrated = True
 
     # 3) Гарантируем раздел 'global' и все его поля
     if "global" not in data or not isinstance(data["global"], dict):
@@ -95,12 +101,13 @@ def load_store() -> dict:
                 data["global"][k] = v
                 migrated = True
 
-    # Если что‑то изменилось — сохраняем обновлённый файл
+    # 4) Если была миграция — сохраняем сразу
     if migrated:
         save_store(data)
-        logger.info(f"{USER_FILE} мигрирован в новую структуру (перенесены старые записи)")
+        logger.info(f"{USER_FILE} мигрирован в новую структуру (все профили в 'users', добавлены 'stats')")
 
     return data
+
 
 
 def save_store(store: dict):
