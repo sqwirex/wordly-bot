@@ -383,6 +383,17 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         store["global"]["total_wins"]    = store["global"].get("total_wins", 0) + 1
         gr = store["global"]["total_wins"] / store["global"]["total_games"]
         store["global"]["win_rate"]      = round(gr, 2)
+
+        top_uid, top_data = max(
+            store["users"].items(),
+            key=lambda kv: kv[1].get("stats", {}).get("wins", 0)
+        )
+
+        store["global"]["top_player"] = {
+            "user_id":   top_uid,
+            "username":  top_data.get("username") or top_data.get("first_name", ""),
+            "wins":      top_data["stats"]["wins"]
+        }
         
         await update.message.reply_text(
             f"🎉 Поздравляю! Угадал за {cg['attempts']} {'попытка' if cg['attempts']==1 else 'попытки' if 2<=cg['attempts']<=4 else 'попыток'}.\n"
@@ -450,13 +461,21 @@ async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user and "current_game" in user:
         await update.message.reply_text("Эту команду можно использовать только вне игры.")
         return
+    
+    tp = g.get("top_player", {})
+    if tp:
+        top_line = f"Сильнейший: @{tp['username']} ({tp['wins']} побед)\n\n"
+    else:
+        top_line = ""
+    
     await update.message.reply_text(
         "```"
         f"🌐 Глобальная статистика:\n\n"
         f"🎲 Всего игр: {g['total_games']}\n"
         f"🏆 Побед: {g['total_wins']}\n"
         f"💔 Поражений: {g['total_losses']}\n"
-        f"📊 Процент: {g['win_rate']*100:.2f}%"
+        f"📊 Процент: {g['win_rate']*100:.2f}%\n\n"
+        f"{top_line}"
         "```",
         parse_mode="Markdown"
     )
@@ -514,7 +533,7 @@ async def stats_not_allowed_during(update: Update, context: ContextTypes.DEFAULT
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
-    
+
     store = load_store()
     uid = str(update.effective_user.id)
     user = store["users"].get(uid)
