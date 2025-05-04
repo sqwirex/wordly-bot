@@ -78,7 +78,7 @@ morph = pymorphy2.MorphAnalyzer(lang="ru")
 # частотный порог (регулируйте по вкусу)
 ZIPF_THRESHOLD = 2.5
 
-BLACK_LIST = {"поуп", "федя", "гена"}
+BLACK_LIST = {"поуп", "федя"}
 
 WORDLIST = sorted({
     w
