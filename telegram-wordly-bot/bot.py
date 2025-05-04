@@ -32,6 +32,17 @@ logger = logging.getLogger(__name__)
 
 # Файл для активности пользователей
 USER_FILE = Path("user_activity.json")
+VOCAB_FILE = Path("vocabulary.json")
+
+def load_store() -> dict:
+    if not USER_FILE.exists(): return {"users": {}, "global": {...}}
+    try:
+        return json.loads(USER_FILE.read_text("utf-8"))
+    except json.JSONDecodeError:
+        return {"users": {}, "global": {"total_games": 0, "total_wins": 0, "total_losses": 0, "win_rate": 0.0}}
+
+def save_store(store: dict):
+    USER_FILE.write_text(json.dumps(store, ensure_ascii=False, indent=2), "utf-8")
 
 def load_user_activity() -> dict:
     """
@@ -79,24 +90,26 @@ morph = pymorphy2.MorphAnalyzer(lang="ru")
 # частотный порог (регулируйте по вкусу)
 ZIPF_THRESHOLD = 2.5
 
-BLACK_LIST = {"поуп", "федя", "никита", "москва", "байкал", "актау", "пидор", "мразь", "куин"}
-WHITE_LIST = {"носок", "ливень", "береза", "капли", "кукла", "сырник", "кунжут", "трусы", "бартер", "фужер", "сандал", "поло", "марка", "блин", "белка", "пинцет", "деньги", "курага", "сорока", "аллюр", "шугаринг"}
+_v = json.loads(VOCAB_FILE.read_text(encoding="utf-8"))
 
-WORDLIST = sorted({
+BLACK_LIST = set(_v.get("black_list", []))
+WHITE_LIST = set(_v.get("white_list", []))
+
+_base = {
     w
     for w in iter_wordlist("ru", wordlist="large")
     if (
         w.isalpha()
         and 4 <= len(w) <= 11
         and w not in BLACK_LIST
-	and zipf_frequency(w, "ru") >= ZIPF_THRESHOLD  # вот он фильтр по частоте
+        and zipf_frequency(w, "ru") >= ZIPF_THRESHOLD
     )
-    # если нужны только существительные-леммы, добавьте проверку pymorphy2:
     for p in [morph.parse(w)[0]]
     if p.tag.POS == "NOUN" and p.normal_form == w
-})
+}
 
-WORDLIST = sorted(set(WORDLIST) | {w for w in WHITE_LIST if 4 <= len(w) <= 11})
+# Объединяем с белым списком, чтобы эти слова гарантированно присутствовали
+WORDLIST = sorted(_base | {w for w in WHITE_LIST if 4 <= len(w) <= 11})
 
 GREEN, YELLOW, RED, UNK = "🟩", "🟨", "🟥", "⬜"
 
@@ -149,6 +162,22 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 # --- Обработчики команд ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store = load_store()
+    u = store["users"].get(str(update.effective_user.id), {})
+    if "current_game" in u:
+        cg = u["current_game"]
+        # заполняем context.user_data из cg:
+        context.user_data.update({
+            "secret": cg["secret"],
+            "length": len(cg["secret"]),
+            "attempts": cg["attempts"],
+            "guesses": cg["guesses"],
+        })
+        await update.message.reply_text(
+            f"У тебя есть незавершённая игра: {len(cg['secret'])}-буквенное слово, ты на попытке {cg['attempts']}. Вводи догадку:"
+        )
+        return GUESSING
+
     update_user_activity(update.effective_user)
     await update.message.reply_text(
         "Привет! Я Wordly Bot — угадай слово за 6 попыток.\n\n"
@@ -183,6 +212,22 @@ async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store = load_store()
+    u = store["users"].get(str(update.effective_user.id), {})
+    if "current_game" in u:
+        cg = u["current_game"]
+        # заполняем context.user_data из cg:
+        context.user_data.update({
+            "secret": cg["secret"],
+            "length": len(cg["secret"]),
+            "attempts": cg["attempts"],
+            "guesses": cg["guesses"],
+        })
+        await update.message.reply_text(
+            f"У тебя есть незавершённая игра: {len(cg['secret'])}-буквенное слово, ты на попытке {cg['attempts']}. Вводи догадку:"
+        )
+        return GUESSING
+    
     update_user_activity(update.effective_user)
     await update.message.reply_text("Сколько букв в слове? (4–11)")
     return ASK_LENGTH
@@ -206,6 +251,17 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ASK_LENGTH
 
     secret = random.choice(candidates)
+    
+    store = load_store()
+    u = store["users"].setdefault(str(update.effective_user.id), {"stats": {"games_played":0,"wins":0,"losses":0}})
+    # Запись текущей игры
+    u["current_game"] = {
+        "secret": secret,
+        "attempts": 0,
+        "guesses": [],
+    }
+    save_store(store)
+
     context.user_data["secret"] = secret
     context.user_data["length"] = length
     context.user_data["attempts"] = 0
@@ -217,47 +273,105 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GUESSING
 
 async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    update_user_activity(update.effective_user)
-    guess = update.message.text.strip().lower()
-    secret = context.user_data["secret"]
-    length = context.user_data["length"]
+    user_id = str(update.effective_user.id)
+    store = load_store()
+    user_entry = store["users"].setdefault(user_id, {
+        "first_name": update.effective_user.first_name,
+        "stats": {"games_played": 0, "wins": 0, "losses": 0}
+    })
 
+    # Обновляем last_seen
+    user_entry["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
+
+    # Если по какой‑то причине current_game отсутствует — инициируем новую
+    if "current_game" not in user_entry:
+        await update.message.reply_text("Нет активной игры, начни /play")
+        return ConversationHandler.END
+
+    cg = user_entry["current_game"]
+    guess = update.message.text.strip().lower()
+    secret = cg["secret"]
+    length = len(secret)
+
+    # Валидация
     if len(guess) != length or guess not in WORDLIST:
         await update.message.reply_text(f"Введите существующее слово из {length} букв.")
         return GUESSING
 
-    context.user_data["guesses"].append(guess)
-    context.user_data["attempts"] += 1
-    attempts = context.user_data["attempts"]
+    # Сохраняем догадку
+    cg["guesses"].append(guess)
+    cg["attempts"] += 1
 
+    # Фидбек
     fb = make_feedback(secret, guess)
     await update.message.reply_text(fb)
 
-    # победа
+    # Победа
     if guess == secret:
-        context.user_data.clear()
-        # правильное склонение
-        form = "попытка" if attempts % 10 == 1 and attempts % 100 != 11 else (
-               "попытки" if 2 <= attempts % 10 <= 4 and not 12 <= attempts % 100 <= 14
-               else "попыток")
+        # Обновляем пользовательскую статистику
+        user_entry["stats"]["games_played"] += 1
+        user_entry["stats"]["wins"] += 1
+
+        # Обновляем глобальную статистику
+        store["global"]["total_games"]   = store["global"].get("total_games", 0) + 1
+        store["global"]["total_wins"]    = store["global"].get("total_wins", 0) + 1
+        store["global"]["total_losses"]  = store["global"].get("total_losses", 0)
+        store["global"]["win_rate"]      = store["global"]["total_wins"] / store["global"]["total_games"]
+
         await update.message.reply_text(
-            f"🎉 Поздравляю! Угадал за {attempts} {form}.\n"
+            f"🎉 Поздравляю! Угадал за {cg['attempts']} {'попытка' if cg['attempts']==1 else 'попытки' if 2<=cg['attempts']<=4 else 'попыток'}.\n"
             "Чтобы сыграть вновь, введи команду /play."
         )
+
+        # Удаляем текущее состояние игры
+        del user_entry["current_game"]
+        save_store(store)
         return ConversationHandler.END
 
-    # поражение
-    if attempts >= 6:
-        context.user_data.clear()
+    # Поражение
+    if cg["attempts"] >= 6:
+        user_entry["stats"]["games_played"] += 1
+        user_entry["stats"]["losses"] += 1
+
+        store["global"]["total_games"]   = store["global"].get("total_games", 0) + 1
+        store["global"]["total_wins"]    = store["global"].get("total_wins", 0)
+        store["global"]["total_losses"]  = store["global"].get("total_losses", 0) + 1
+        store["global"]["win_rate"]      = (
+            store["global"]["total_wins"] / store["global"]["total_games"]
+            if store["global"]["total_games"] else 0
+        )
+
         await update.message.reply_text(
             f"💔 Попытки закончились. Было слово «{secret}».\n"
             "Чтобы начать новую игру, введи команду /play."
         )
+
+        del user_entry["current_game"]
+        save_store(store)
         return ConversationHandler.END
 
+    # Игра продолжается — сохраняем прогресс и ждём следующей догадки
+    save_store(store)
     return GUESSING
 
+
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    store = load_store()
+    u = store["users"].get(str(update.effective_user.id), {})
+    if "current_game" in u:
+        cg = u["current_game"]
+        # заполняем context.user_data из cg:
+        context.user_data.update({
+            "secret": cg["secret"],
+            "length": len(cg["secret"]),
+            "attempts": cg["attempts"],
+            "guesses": cg["guesses"],
+        })
+        await update.message.reply_text(
+            f"У тебя есть незавершённая игра: {len(cg['secret'])}-буквенное слово, ты на попытке {cg['attempts']}. Вводи догадку:"
+        )
+        return GUESSING
+    
     update_user_activity(update.effective_user)
     data = context.user_data
     if "secret" not in data:
@@ -347,6 +461,14 @@ def main():
     app.add_handler(CommandHandler("my_letters", my_letters))
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("start", start))
+
+    store = load_store()
+    # Для каждого пользователя, у которого был current_game, 
+    # контекст загрузит его в context.user_data
+    for uid, udata in store["users"].items():
+        if "current_game" in udata:
+            # мы запомним это в user_data при первом обращении:
+            pass
 
     app.run_polling(drop_pending_updates=True)
 
