@@ -514,6 +514,14 @@ async def stats_not_allowed_during(update: Update, context: ContextTypes.DEFAULT
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
+    
+    store = load_store()
+    uid = str(update.effective_user.id)
+    user = store["users"].get(uid)
+    if user and "current_game" in user:
+        del user["current_game"]
+        save_store(store)
+
     context.user_data.clear()
     await update.message.reply_text("Прогресс сброшен. Жду /play для новой игры.")
     return ConversationHandler.END
