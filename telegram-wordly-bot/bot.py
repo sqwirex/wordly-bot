@@ -160,22 +160,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
-     """
-     Периодически (каждые 3 часа) шлём юзер-активити администратору.
-     """
-     ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))  # ваш ID
-     if update.effective_user.id != ADMIN_ID:
-         return
-     activity_path = Path("user_activity.json")
-     if not activity_path.exists():
-         return
-     # Открываем файл и отправляем как документ
-     with activity_path.open("rb") as f:
-         await context.bot.send_document(
-             chat_id=ADMIN_ID,
-             document=InputFile(f, filename="user_activity.json"),
-             caption="Текущий файл user_activity.json"
-         )
+    """
+    Периодически (и сразу при старте) шлёт содержимое user_activity.json администратору.
+    """
+    ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+    activity_path = USER_FILE
+    if not activity_path.exists():
+        return
+
+    # Читаем весь JSON как текст
+    content = activity_path.read_text(encoding="utf-8")
+
+    # Отправляем как сообщение в виде моноширинного блока
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=f"📋 Текущий user_activity.json:\n<pre>{content}</pre>",
+        parse_mode="HTML"
+    )
 
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
