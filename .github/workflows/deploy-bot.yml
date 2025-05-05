@@ -2,36 +2,46 @@ name: 🚀 Deploy Bot
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'telegram-wordly-bot/**'
+    branches: [ main ]
 
 jobs:
-  deploy-bot:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Deploy Bot via SSH
-        uses: appleboy/ssh-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key:      ${{ secrets.SSH_PRIVATE_KEY }}
-          port:     ${{ secrets.VPS_PORT || 22 }}
-          script: |
-            set -e
-            cd ~/site-for-mpu/telegram-wordly-bot
-            git fetch origin main
-            git reset --hard origin/main
-            if docker ps -q --filter name=wordly-bot; then
-              docker rm -f wordly-bot
-            fi
-            docker build -t wordly-bot .
-            docker run -d \
-              --name wordly-bot \
-              --restart unless-stopped \
-              --env-file .env \
-              -v "$(pwd)/user_activity.json":/app/user_activity.json \
-              wordly-bot
-            echo "✅ Bot deployed"
+    - name: SSH & Deploy
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_KEY }}
+        port: ${{ secrets.VPS_PORT }}
+        script: |
+          cd ~/site-for-mpu/telegram-wordly-bot
+
+          # 1) забираем последние изменения кода, но без перезатирания локальных JSON
+          git fetch origin main
+          git reset --hard origin/main
+
+          # 2) перезапускаем контейнер (том всё хранит)
+          docker rm -f wordly-bot || true
+          docker build -t wordly-bot .
+          docker run -d \
+            --name wordly-bot \
+            --restart unless-stopped \
+            --env-file .env \
+            -v "$(pwd)":/app \
+            wordly-bot
+
+    - name: Sync JSON → Repo
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_KEY }}
+        port: ${{ secrets.VPS_PORT }}
+        script: |
+          cd ~/site-for-mpu/telegram-wordly-bot
+          # скопировать любые изменённые JSON-файлы обратно в Git
+          git add vocabulary.json feedback.json user_activity.json
+          git commit -m "Sync dictionaries and activity (auto)" || echo "No changes"
+          git push origin main
