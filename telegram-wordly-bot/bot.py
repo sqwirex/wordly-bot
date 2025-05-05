@@ -51,7 +51,6 @@ async def set_commands(app):
             BotCommand("my_stats",      "Ваша статистика"),
             BotCommand("global_stats",  "Глобальная статистика"),
             BotCommand("dump_activity", "Скачать user_activity.json"),
-            BotCommand("vocab_update",  "Обновить словарь"),
         ],
         scope=BotCommandScopeChat(chat_id=ADMIN_ID)
     )
