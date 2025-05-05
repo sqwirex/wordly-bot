@@ -1,17 +1,21 @@
+# Используем лёгкий официальный образ Python
 FROM python:3.10-slim
 
+# Рабочая директория внутри контейнера
 WORKDIR /app
 
-# Копируем .env из корня (теперь он лежит в site-for-mpu/.env)
-COPY telegram-wordly-bot/.env .
+# Копируем .env (он создаётся на VPS/CI до сборки)
+COPY .env .
 
-# Устанавливаем зависимости
+# Устанавливаем зависимости бота
 COPY telegram-wordly-bot/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем весь код
+# Копируем сам код бота
 COPY telegram-wordly-bot/ /app
 
+# Чтобы логи сразу шли на STDOUT
 ENV PYTHONUNBUFFERED=1
 
+# Точка входа
 CMD ["python", "bot.py"]

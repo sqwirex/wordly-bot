@@ -9,46 +9,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      # 1. Клонируем репозиторий
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-    - name: Deploy to VPS via SSH
-      uses: appleboy/ssh-action@v0.1.7
-      with:
-        host: ${{ secrets.VPS_HOST }}        # e.g. "158.160.117.222"
-        username: ${{ secrets.VPS_USER }}    # ваш логин на VPS
-        key: ${{ secrets.SSH_PRIVATE_KEY }}      # приватный SSH-ключ
-        port: ${{ secrets.VPS_PORT }}        # обычно 22
-        script: |
-          set -e
-          cd ~/site-for-mpu
+      # 2. Деплой на VPS по SSH
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}       # ваш IP или хост
+          username: ${{ secrets.VPS_USER }}   # пользователь на VPS
+          key: ${{ secrets.VPS_SSH_KEY }}     # SSH-ключ
+          port: ${{ secrets.VPS_PORT || '22' }}
+          script: |
+            set -e
+            cd ~/site-for-mpu
 
-          echo "=== Sync code ==="
-          git fetch origin main
-          git reset --hard origin/main
+            echo "=== Sync code ==="
+            git fetch origin main
+            git reset --hard origin/main
 
-          echo "=== Generate .env on VPS ==="
-          cat > telegram-wordly-bot/.env <<EOF
-          BOT_TOKEN=${{ secrets.BOT_TOKEN }}
-          ADMIN_ID=${{ secrets.ADMIN_ID }}
-          EOF
+            echo "=== Generate .env ==="
+            cat > .env <<EOF
+            BOT_TOKEN=${{ secrets.BOT_TOKEN }}
+            ADMIN_ID=${{ secrets.ADMIN_ID }}
+            EOF
 
-          echo "=== Stop old container if exists ==="
-          if docker ps -q --filter name=wordly-bot >/dev/null; then
-            docker rm -f wordly-bot
-          fi
+            echo "=== Stop old container (if any) ==="
+            docker rm -f wordly-bot || true
 
-          echo "=== Build new image ==="
-          docker build -t wordly-bot .
+            echo "=== Build image ==="
+            docker build -t wordly-bot .
 
-          echo "=== Run container ==="
-          docker run -d \
-            --name wordly-bot \
-            --restart unless-stopped \
-            --env-file /app/telegram-wordly-bot/.env \
-            -v ~/site-for-mpu:/app \
-            wordly-bot
+            echo "=== Run container ==="
+            docker run -d \
+              --name wordly-bot \
+              --restart unless-stopped \
+              --env-file /app/.env \
+              -v ~/site-for-mpu:/app \
+              wordly-bot
 
-          echo "✅ Bot deployed successfully"
+            echo "✅ Bot deployed successfully"
