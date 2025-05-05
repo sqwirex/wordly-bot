@@ -26,6 +26,8 @@ from telegram import BotCommand, BotCommandScopeChat
 # Загрузка .env
 load_dotenv()
 
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+
 # Логирование
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -42,10 +44,16 @@ async def set_commands(app):
     
     await app.bot.set_my_commands(
         [
-          BotCommand("dump_activity", "Скачать user_activity.json"),
-          BotCommand("vocab_update",  "Обновить словарь"),
+            BotCommand("start",         "Показать приветствие"),
+            BotCommand("play",          "Начать новую игру"),
+            BotCommand("reset",         "Сбросить игру"),
+            BotCommand("my_letters",    "Статус букв в игре"),
+            BotCommand("my_stats",      "Ваша статистика"),
+            BotCommand("global_stats",  "Глобальная статистика"),
+            BotCommand("dump_activity", "Скачать user_activity.json"),
+            BotCommand("vocab_update",  "Обновить словарь"),
         ],
-        scope=BotCommandScopeChat(chat_id=int(os.getenv("ADMIN_ID")))
+        scope=BotCommandScopeChat(chat_id=ADMIN_ID)
     )
 
 def load_store() -> dict:
