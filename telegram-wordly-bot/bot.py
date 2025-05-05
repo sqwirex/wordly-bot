@@ -49,11 +49,6 @@ with VOCAB_FILE.open("r", encoding="utf-8") as f:
 
 # файл для предложений пользователей
 SUGGESTIONS_FILE = Path("suggestions.json")
-if SUGGESTIONS_FILE.exists():
-    with SUGGESTIONS_FILE.open("r", encoding="utf-8") as f:
-        suggestions = json.load(f)
-else:
-    suggestions = {"black": [], "white": []}
 
 async def set_commands(app):
     
@@ -72,22 +67,35 @@ async def set_commands(app):
     )
 
 def load_suggestions() -> dict:
-    """Загружает suggestions.json или возвращает пустые списки."""
+    """
+    Загружает файл suggestions.json, возвращает {"black": [], "white": []}
+    если файл не существует, пуст или содержит битый JSON.
+    """
     if not SUGGESTIONS_FILE.exists():
         return {"black": [], "white": []}
+
     raw = SUGGESTIONS_FILE.read_text("utf-8").strip()
     if not raw:
         return {"black": [], "white": []}
+
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        # если файл повреждён, сбросим предложения
+        data = json.loads(raw)
+        # убеждаемся, что обе секции есть и это списки
+        if not isinstance(data, dict):
+            raise ValueError
+        return {
+            "black": list(data.get("black", [])),
+            "white": list(data.get("white", [])),
+        }
+    except (json.JSONDecodeError, ValueError):
         return {"black": [], "white": []}
 
-def save_suggestions():
-    """Записывает suggestions в suggestions.json."""
+def save_suggestions(sugg: dict) -> None:
+    """Сохраняет suggestions обратно в файл."""
     with SUGGESTIONS_FILE.open("w", encoding="utf-8") as f:
-        json.dump(suggestions, f, ensure_ascii=False, indent=2)
+        json.dump(sugg, f, ensure_ascii=False, indent=2)
+
+suggestions = load_suggestions()
     
 def load_store() -> dict:
     """
