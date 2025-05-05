@@ -9,46 +9,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Клонируем репозиторий
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
-      # 2. Деплой на VPS по SSH
-      - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}       # ваш IP или хост
-          username: ${{ secrets.VPS_USER }}   # пользователь на VPS
-          key: ${{ secrets.VPS_SSH_KEY }}     # SSH-ключ
-          port: ${{ secrets.VPS_PORT || '22' }}
-          script: |
-            set -e
-            cd ~/site-for-mpu
+    - name: Deploy to VPS via SSH
+      uses: appleboy/ssh-action@v0.1.7
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        port: ${{ secrets.VPS_PORT || '22' }}
+        script: |
+          set -e
+          cd ~/site-for-mpu
 
-            echo "=== Sync code ==="
-            git fetch origin main
-            git reset --hard origin/main
+          echo "=== Sync code ==="
+          git fetch origin main
+          git reset --hard origin/main
 
-            echo "=== Generate .env ==="
-            cat > .env <<EOF
-            BOT_TOKEN=${{ secrets.BOT_TOKEN }}
-            ADMIN_ID=${{ secrets.ADMIN_ID }}
-            EOF
+          echo "=== Generate .env ==="
+          cat > .env <<EOF
+          BOT_TOKEN=${{ secrets.BOT_TOKEN }}
+          ADMIN_ID=${{ secrets.ADMIN_ID }}
+          EOF
 
-            echo "=== Stop old container (if any) ==="
-            docker rm -f wordly-bot || true
+          echo "=== Remove old container ==="
+          docker rm -f wordly-bot || true
 
-            echo "=== Build image ==="
-            docker build -t wordly-bot .
+          echo "=== Build new image ==="
+          docker build -t wordly-bot .
 
-            echo "=== Run container ==="
-            docker run -d \
-              --name wordly-bot \
-              --restart unless-stopped \
-              --env-file /app/.env \
-              -v ~/site-for-mpu:/app \
-              wordly-bot
+          echo "=== Run container ==="
+          docker run -d \
+            --name wordly-bot \
+            --restart unless-stopped \
+            --env-file /app/.env \
+            -v ~/site-for-mpu:/app \
+            wordly-bot
 
-            echo "✅ Bot deployed successfully"
+          echo "✅ Bot deployed successfully"
