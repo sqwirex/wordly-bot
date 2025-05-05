@@ -104,10 +104,12 @@ footer {
     margin: 0 auto;
 }
 
-#participants {
+.participants {
     display: block;
     margin-left: 30px;
 }
+
+
 
 #about {
     display: block;
