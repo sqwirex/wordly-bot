@@ -67,36 +67,27 @@ async def set_commands(app):
     )
 
 def load_suggestions() -> dict:
-    """
-    Загружает файл suggestions.json, возвращает {"black": [], "white": []}
-    если файл не существует, пуст или содержит битый JSON.
-    """
     if not SUGGESTIONS_FILE.exists():
         return {"black": [], "white": []}
-
     raw = SUGGESTIONS_FILE.read_text("utf-8").strip()
     if not raw:
         return {"black": [], "white": []}
-
     try:
         data = json.loads(raw)
-        # убеждаемся, что обе секции есть и это списки
-        if not isinstance(data, dict):
-            raise ValueError
         return {
             "black": list(data.get("black", [])),
             "white": list(data.get("white", [])),
         }
-    except (json.JSONDecodeError, ValueError):
+    except json.JSONDecodeError:
         return {"black": [], "white": []}
 
-def save_suggestions(sugg: dict) -> None:
-    """Сохраняет suggestions обратно в файл."""
+def save_suggestions(sugg: dict):
     with SUGGESTIONS_FILE.open("w", encoding="utf-8") as f:
         json.dump(sugg, f, ensure_ascii=False, indent=2)
 
+# загружаем один раз при старте
 suggestions = load_suggestions()
-    
+
 def load_store() -> dict:
     """
     Загружает user_activity.json.
@@ -272,20 +263,27 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 # --- Обработчики команд ---
 
 async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Запрещаем во время игры
+    # запретим во время игры
     store = load_store()
     u = store["users"].get(str(update.effective_user.id), {})
     if "current_game" in u:
-        await update.message.reply_text("Нельзя во время игры.", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text(
+            "Нельзя отправлять фидбек во время игры.", reply_markup=ReplyKeyboardRemove()
+        )
         return ConversationHandler.END
 
+    # предлагаем выбрать список
     keyboard = [
         ["Чёрный список", "Белый список"],
         ["Отмена"]
     ]
     markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text("Куда добавить слово?", reply_markup=markup)
+
+    # запомним текущее состояние
+    context.user_data["feedback_state"] = FEEDBACK_CHOOSE
     return FEEDBACK_CHOOSE
+
 
 async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -294,52 +292,63 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if text not in ("Чёрный список", "Белый список"):
-        await update.message.reply_text("Пожалуйста, выберите вариант кнопкой.")
+        await update.message.reply_text("Пожалуйста, нажимайте одну из кнопок.")
         return FEEDBACK_CHOOSE
 
-    context.user_data["feedback_category"] = "black" if text == "Чёрный список" else "white"
-    await update.message.reply_text("Введите слово для предложения:", reply_markup=ReplyKeyboardRemove())
+    # куда кладём
+    context.user_data["fb_target"] = "black" if text == "Чёрный список" else "white"
+    # убираем клавиатуру и спрашиваем слово
+    await update.message.reply_text(
+        "Введите слово для предложения:", reply_markup=ReplyKeyboardRemove()
+    )
+
+    context.user_data["feedback_state"] = FEEDBACK_WORD
     return FEEDBACK_WORD
+
 
 async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = update.message.text.strip().lower()
-    cat = context.user_data.get("feedback_category")
+    target = context.user_data["fb_target"]
 
-    if cat == "black":
-        # проверяем, что слово есть в основном словаре, но ещё не предложено
+    # подтянем свежие предложения
+    global suggestions
+    suggestions = load_suggestions()
+
+    if target == "black":
         if word not in WORDLIST:
-            await update.message.reply_text("Нельзя: такого слова нет в основном словаре.")
+            resp = "Нельзя: такого слова нет в основном словаре."
         elif word in vocabulary.get("black_list", []) or word in suggestions["black"]:
-            await update.message.reply_text("Нельзя: слово уже в чёрном списке.")
+            resp = "Нельзя: слово уже в чёрном списке или вы его уже предлагали."
         else:
             suggestions["black"].append(word)
-            save_suggestions()
-            await update.message.reply_text("Добавил в предложения для чёрного списка.")
+            save_suggestions(suggestions)
+            resp = "Спасибо, добавил в предложения для чёрного списка."
     else:  # white
         if word in WORDLIST:
-            await update.message.reply_text("Нельзя: такое слово уже в основном словаре.")
+            resp = "Нельзя: такое слово уже есть в основном словаре."
         elif word in vocabulary.get("white_list", []) or word in suggestions["white"]:
-            await update.message.reply_text("Нельзя: слово уже в белом списке.")
+            resp = "Нельзя: слово уже в белом списке или вы его уже предлагали."
         else:
             suggestions["white"].append(word)
-            save_suggestions()
-            await update.message.reply_text("Добавил в предложения для белого списка.")
+            save_suggestions(suggestions)
+            resp = "Спасибо, добавил в предложения для белого списка."
 
+    await update.message.reply_text(resp)
     return ConversationHandler.END
 
-# Фоллбэк на /cancel
+
+async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # любой посторонний ввод заглушаем
+    await update.message.reply_text(
+        "Сейчас идёт ввод для фидбека: введите слово или /cancel, чтобы прервать."
+    )
+    # возвращаемся в текущее состояние
+    return context.user_data.get("feedback_state", FEEDBACK_CHOOSE)
+
+
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
-
-async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отлавливает любые посторонние сообщения во время фидбека."""
-    await update.message.reply_text(
-        "Сейчас вводится слово для фидбека. "
-        "Чтобы прервать, введите /cancel."
-    )
-    # остаёмся на том же шаге
-    return context.user_data.get("feedback_state")
 
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -737,7 +746,25 @@ def main():
         interval=3 * 60 * 60,  # 3 часа в секундах
         first=10      # первый запуск сразу
     )
-	
+
+    feedback_conv = ConversationHandler(
+    entry_points=[CommandHandler("feedback", feedback_start)],
+    states={
+        FEEDBACK_CHOOSE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, feedback_choose),
+            MessageHandler(filters.ALL, block_during_feedback),
+        ],
+        FEEDBACK_WORD: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, feedback_word),
+            MessageHandler(filters.ALL, block_during_feedback),
+        ],
+    },
+    fallbacks=[CommandHandler("cancel", feedback_cancel)],
+    allow_reentry=True,
+    )
+    
+    app.add_handler(feedback_conv)
+    
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("play", ask_length),
@@ -763,14 +790,6 @@ def main():
                 CommandHandler("global_stats", stats_not_allowed_during),
                 CommandHandler("play", ignore_guess),
                 CommandHandler("reset", reset),
-            ],
-            FEEDBACK_CHOOSE: [
-             MessageHandler(filters.TEXT & ~filters.COMMAND, feedback_choose),
-            MessageHandler(filters.ALL, block_during_feedback),
-            ],
-            FEEDBACK_WORD: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, feedback_word),
-               MessageHandler(filters.ALL, block_during_feedback),
             ],
         },
         fallbacks=[
