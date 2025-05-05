@@ -8,14 +8,19 @@ from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
 from telegram import InputFile
 
-from telegram import Update
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
+    CallbackQueryHandler,
     MessageHandler,
-    ContextTypes,
     ConversationHandler,
     filters,
+    ContextTypes,
 )
 from wordfreq import iter_wordlist, zipf_frequency
 from dotenv import load_dotenv
@@ -39,6 +44,7 @@ logger = logging.getLogger(__name__)
 # Файл для активности пользователей
 USER_FILE = Path("user_activity.json")
 VOCAB_FILE = Path("vocabulary.json")
+SUGGESTIONS_FILE = Path("suggestions.json")
 
 async def set_commands(app):
     
@@ -50,11 +56,23 @@ async def set_commands(app):
             BotCommand("my_letters",    "Статус букв в игре"),
             BotCommand("my_stats",      "Ваша статистика"),
             BotCommand("global_stats",  "Глобальная статистика"),
+            BotCommand("feedback", "Жалоба на слово"),
             BotCommand("dump_activity", "Скачать user_activity.json"),
         ],
         scope=BotCommandScopeChat(chat_id=ADMIN_ID)
     )
 
+def load_suggestions() -> dict:
+    if not SUGGESTIONS_FILE.exists():
+        return {"black": [], "white": []}
+    return json.loads(SUGGESTIONS_FILE.read_text(encoding="utf-8"))
+
+def save_suggestions(data: dict):
+    SUGGESTIONS_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+    
 def load_store() -> dict:
     """
     Загружает user_activity.json.
@@ -100,7 +118,6 @@ def load_store() -> dict:
         data["global"].setdefault(key, val)
 
     return data
-
 
 def save_store(store: dict) -> None:
     """
@@ -153,7 +170,7 @@ def update_user_activity(user) -> None:
     save_store(store)
 
 # --- Константы и словарь ---
-ASK_LENGTH, GUESSING = range(2)
+ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD = range(4)
 
 # инициализация морфоанализатора
 morph = pymorphy2.MorphAnalyzer(lang="ru")
@@ -229,9 +246,78 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
                     status[ch] = "red"
     return status
 
+def add_suggestion(word: str, list_type: str) -> str:
+    """
+    list_type: "black" или "white"
+    Проверки:
+      - для black: слово должно быть в WORDLIST и не в black_list
+      - для white: слово не должно быть в WORDLIST и не в white_list
+    Возвращает сообщение для пользователя.
+    """
+    word = word.lower()
+    voc = load_suggestions()
+    if list_type == "black":
+        if word not in WORDLIST:
+            return "❌ Нельзя добавить: этого слова нет в основном словаре."
+        if word in BLACK_LIST:
+            return "❌ Нельзя добавить: слово уже есть в чёрном списке."
+        if word in voc["black"]:
+            return "❌ Вы уже предлагали это слово."
+        voc["black"].append(word)
+        save_suggestions(voc)
+        return "✅ Предложение добавлено в чёрный список."
+    
+    elif list_type == "white":
+        if word in WORDLIST:
+            return "❌ Нельзя добавить: этого слова уже достаточно в основном словаре."
+        if word in WHITE_LIST:
+            return "❌ Нельзя добавить: слово уже есть в белом списке."
+        if word in voc["white"]:
+            return "❌ Вы уже предлагали это слово."
+        voc["white"].append(word)
+        save_suggestions(voc)
+        return "✅ Предложение добавлено в белый список."
+
+    else:
+        return "❌ Некорректный тип списка. Выберите black или white."
+    
 
 # --- Обработчики команд ---
 
+async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # предлагаем выбрать список
+    keyboard = [
+        [KeyboardButton("Чёрный список"), KeyboardButton("Белый список")],
+        [KeyboardButton("Отмена")]
+    ]
+    reply = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Куда добавить слово?", reply_markup=reply)
+    return FEEDBACK_CHOOSE
+
+async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == "Чёрный список":
+        context.user_data["blk_or_wht"] = "black"
+        await update.message.reply_text("Введите слово для проверки и добавления в чёрный список:", reply_markup=ReplyKeyboardRemove())
+        return FEEDBACK_WORD
+    if text == "Белый список":
+        context.user_data["blk_or_wht"] = "white"
+        await update.message.reply_text("Введите слово для проверки и добавления в белый список:", reply_markup=ReplyKeyboardRemove())
+        return FEEDBACK_WORD
+    # отмена
+    await update.message.reply_text("Операция отменена.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    word = update.message.text.strip().lower()
+    list_type = context.user_data.get("blk_or_wht")
+    result = add_suggestion(word, list_type)
+    await update.message.reply_text(result)
+    return ConversationHandler.END
+
+async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Отменено.")
+    return ConversationHandler.END
 
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -633,7 +719,8 @@ def main():
     conv = ConversationHandler(
         entry_points=[
             CommandHandler("play", ask_length),
-            CommandHandler("start", start)
+            CommandHandler("start", start),
+            CommandHandler("feedback", feedback_start)
         ],
         states={
             ASK_LENGTH: [
@@ -655,8 +742,13 @@ def main():
                 CommandHandler("play", ignore_guess),
                 CommandHandler("reset", reset),
             ],
+            FEEDBACK_CHOOSE: [CallbackQueryHandler(feedback_choose, pattern="^(black|white)$")],
+            FEEDBACK_WORD:   [MessageHandler(filters.TEXT & ~filters.COMMAND, feedback_word)],
         },
-        fallbacks=[CommandHandler("reset", reset)],
+        fallbacks=[
+            CommandHandler("reset", reset),
+            CommandHandler("cancel", feedback_cancel)
+       ],
     )
     app.add_handler(conv)
 
