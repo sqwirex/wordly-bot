@@ -20,6 +20,9 @@ from telegram.ext import (
 from wordfreq import iter_wordlist, zipf_frequency
 from dotenv import load_dotenv
 
+from telegram import BotCommand
+from telegram import BotCommandScopeChat
+
 # Загрузка .env
 load_dotenv()
 
@@ -30,9 +33,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 # Файл для активности пользователей
 USER_FILE = Path("user_activity.json")
 VOCAB_FILE = Path("vocabulary.json")
+
+async def set_commands(app):
+    
+    await app.bot.set_my_commands(
+    [
+      BotCommand("dump_activity", "Скачать user_activity.json"),
+      BotCommand("vocab_update",  "Обновить словарь"),
+    ],
+    scope=BotCommandScopeChat(chat_id=ADMIN_ID)
+)
 
 def load_store() -> dict:
     """
@@ -210,6 +224,20 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 
 
 # --- Обработчики команд ---
+
+async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return  # защита
+    path = USER_FILE
+    if not path.exists():
+        return await update.message.reply_text("Файл не найден.")
+    text = path.read_text("utf-8")
+    if len(text) < 3000:
+        await update.message.reply_text(f"<pre>{text}</pre>", parse_mode="HTML")
+    else:
+        await update.message.reply_document(
+            InputFile(path, filename="user_activity.json")
+        )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
@@ -612,6 +640,7 @@ def main():
     app.add_handler(CommandHandler("my_letters", my_letters_not_allowed))
     app.add_handler(CommandHandler("my_stats", my_stats))
     app.add_handler(CommandHandler("global_stats", global_stats))
+    app.add_handler(CommandHandler("dump_activity", dump_activity))
 
     store = load_store()
     # Для каждого пользователя, у которого был current_game, 
