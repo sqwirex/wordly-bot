@@ -20,8 +20,8 @@ from telegram.ext import (
 from wordfreq import iter_wordlist, zipf_frequency
 from dotenv import load_dotenv
 
-from telegram import BotCommand
-from telegram import BotCommandScopeChat
+from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+
 
 # Загрузка .env
 load_dotenv()
@@ -41,12 +41,12 @@ VOCAB_FILE = Path("vocabulary.json")
 async def set_commands(app):
     
     await app.bot.set_my_commands(
-    [
-      BotCommand("dump_activity", "Скачать user_activity.json"),
-      BotCommand("vocab_update",  "Обновить словарь"),
-    ],
-    scope=BotCommandScopeChat(chat_id=ADMIN_ID)
-)
+        [
+          BotCommand("dump_activity", "Скачать user_activity.json"),
+          BotCommand("vocab_update",  "Обновить словарь"),
+        ],
+        scope=BotCommandScopeChat(chat_id=int(os.getenv("ADMIN_ID")))
+    )
 
 def load_store() -> dict:
     """
@@ -650,8 +650,10 @@ def main():
             # мы запомним это в user_data при первом обращении:
             pass
 
-    app.run_polling(drop_pending_updates=True)
-
+    app.run_polling(
+        drop_pending_updates=True,
+        post_init=set_commands
+    )
 
 if __name__ == "__main__":
     main()
