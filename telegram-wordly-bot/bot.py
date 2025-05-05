@@ -20,7 +20,7 @@ from telegram.ext import (
 from wordfreq import iter_wordlist, zipf_frequency
 from dotenv import load_dotenv
 
-from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+from telegram import BotCommand, BotCommandScopeChat
 
 
 # Загрузка .env
@@ -594,7 +594,12 @@ def main():
         logger.error("BOT_TOKEN не установлен")
         return
 
-    app = ApplicationBuilder().token(token).build()
+    app = (
+        ApplicationBuilder()
+        .token(token)
+        .post_init(set_commands)
+        .build()
+    )
 	
     # Запускаем фоновую задачу: каждые 3 часа шлём user_activity.json админу
     job_queue = app.job_queue
@@ -650,10 +655,7 @@ def main():
             # мы запомним это в user_data при первом обращении:
             pass
 
-    app.run_polling(
-        drop_pending_updates=True,
-        post_init=set_commands
-    )
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
