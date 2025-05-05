@@ -233,18 +233,29 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 
 # --- Обработчики команд ---
 
+
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return  # защита
-    path = USER_FILE
+        return
+
+    path = USER_FILE  # это Path("user_activity.json")
     if not path.exists():
-        return await update.message.reply_text("Файл не найден.")
-    text = path.read_text("utf-8")
-    if len(text) < 3000:
-        await update.message.reply_text(f"<pre>{text}</pre>", parse_mode="HTML")
-    else:
+        return await update.message.reply_text("Файл user_activity.json не найден.")
+
+    # прочитаем текст, и если короткий — отправим как сообщение
+    content = path.read_text("utf-8")
+    if len(content) < 3000:
+        # отправляем в кодовом блоке
+        return await update.message.reply_text(
+            f"<pre>{content}</pre>", parse_mode="HTML"
+        )
+
+    # иначе — отправляем как документ
+    with path.open("rb") as f:
+        document = InputFile(f, filename=path.name)
         await update.message.reply_document(
-            InputFile(path, filename="user_activity.json")
+            document=document,
+            caption="📁 user_activity.json"
         )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
