@@ -19,8 +19,8 @@ jobs:
       with:
         host: ${{ secrets.VPS_HOST }}       # e.g. "158.160.117.222"
         username: ${{ secrets.VPS_USER }}   # ваш логин на VPS
-        key: ${{ secrets.SHH_PRIVATE_KEY }}     # приватный SSH-ключ
-        port: ${{ secrets.VPS_POST }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}     # приватный SSH-ключ
+        port: ${{ secrets.VPS_PORT }}
         script: |
           set -e
 
