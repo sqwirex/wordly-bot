@@ -3,7 +3,7 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # Копируем .env из корня (теперь он лежит в site-for-mpu/.env)
-COPY .env .
+COPY telegram-wordly-bot/.env .
 
 # Устанавливаем зависимости
 COPY telegram-wordly-bot/requirements.txt .
