@@ -10,3 +10,4 @@ __pycache__/
 
 # данные пользователей
 **/user_activity.json
+**/suggestions.json
