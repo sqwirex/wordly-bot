@@ -252,9 +252,8 @@ async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # иначе — отправляем как документ
     with path.open("rb") as f:
-        document = InputFile(f, filename=path.name)
         await update.message.reply_document(
-            document=document,
+            document=InputFile(f, filename=path.name),
             caption="📁 user_activity.json"
         )
 
@@ -480,6 +479,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает личную статистику — только вне игры."""
+    update_user_activity(update.effective_user)
     store = load_store()
     uid = str(update.effective_user.id)
     user = store["users"].get(uid)
@@ -499,6 +499,7 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_user_activity(update.effective_user)
     """Показывает глобальную статистику — только вне игры."""
     store = load_store()
     g = store["global"]
@@ -528,6 +529,7 @@ async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_user_activity(update.effective_user)
     await update.message.reply_text("Эту команду можно использовать только во время игры.")
     # остаёмся в том же состоянии ASK_LENGTH
     return ASK_LENGTH
@@ -574,6 +576,7 @@ async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GUESSING
 
 async def stats_not_allowed_during(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_user_activity(update.effective_user)
     await update.message.reply_text("Эту команду можно использовать только вне игры.")
     # возвращаем текущее состояние разговора, которое лежит в context.user_data
     return context.user_data.get("state", context.user_data["state"])
