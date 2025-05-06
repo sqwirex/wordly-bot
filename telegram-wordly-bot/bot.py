@@ -263,16 +263,13 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 # --- Обработчики команд ---
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # проверим, что игра НЕ запущена ни в context ни в хранилище
-    store = load_store()
-    uid = str(update.effective_user.id)
-    game_in_store = "current_game" in store["users"].get(uid, {})
-    if game_in_store and context.user_data.get("game_active"):
-        return  # если игра ведётся — игнорируем
-    # иначе реагируем на любой чистый текст
+    # если флаг game_active = True (выбор длины или игра) — ничего не делаем
+    if context.user_data.get("game_active"):
+        return
+    # иначе бот вне игры, любой текст — это не команда
     await update.message.reply_text(
         "Я не обрабатываю обычные слова 😕\n"
-        "Чтобы начать игру, введи /play."
+        "Чтобы начать новую игру, введи команду /play."
     )
 
 async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
