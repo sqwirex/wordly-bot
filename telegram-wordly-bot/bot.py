@@ -309,6 +309,7 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     if text == "Отмена":
         await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
+        context.user_data.pop("in_feedback", None)
         return ConversationHandler.END
 
     if text not in ("Чёрный список", "Белый список"):
@@ -365,12 +366,6 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
     )
     # возвращаемся в текущее состояние
     return context.user_data.get("feedback_state", FEEDBACK_CHOOSE)
-
-
-async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("in_feedback", None)
-    await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
 
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
