@@ -367,6 +367,11 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
     # возвращаемся в текущее состояние
     return context.user_data.get("feedback_state", FEEDBACK_CHOOSE)
 
+async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    
+    await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -799,6 +804,7 @@ def main():
             MessageHandler(filters.ALL, block_during_feedback),
         ],
     },
+    fallbacks=[CommandHandler("cancel", feedback_cancel)],
     allow_reentry=True
     )
     
