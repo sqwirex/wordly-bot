@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
 from telegram import InputFile
+from telegram.ext import PicklePersistence
 
 from telegram import (
     Update,
@@ -916,10 +917,13 @@ def main():
         logger.error("BOT_TOKEN не установлен")
         return
 
+    persistence = PicklePersistence(filepath='conversation_state.pkl')
+
     app = (
         ApplicationBuilder()
         .token(token)
         .post_init(set_commands)
+        .persistence(persistence)
         .build()
     )
 	
@@ -1024,11 +1028,7 @@ def main():
     store = load_store()
     for uid_str, udata in store["users"].items():
         if "current_game" in udata:
-            uid = int(uid_str)
-            # флаг «я в игре» для вашего unknown_text
-            app.user_data[uid]["game_active"] = True
-            # нужен ещё флаг состояния, если вы его проверяете
-            app.user_data[uid]["state"] = GUESSING
+            pass
 
     app.run_polling(drop_pending_updates=True)
 
