@@ -398,7 +398,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/my_letters — показать статус букв во время игры\n"
         "/reset — сбросить текущую игру\n"
         "/my_stats — посмотреть свою статистику\n"
-        "/global_stats — посмотреть глобальную статистику за все время\n\n"
+        "/global_stats — посмотреть глобальную статистику за все время\n"
+        "/feedback — если ты встретил слово, которое не должно быть в словаре или не существует, введи его в Черный список " \
+        "если же наоборот, ты вбил слово, а бот его не признает, но ты уверен что оно существует, отправляй его в Белый список. " \
+        "Администратор бота рассмотрит твое слово и добавит в ближайшем обновлении, если оно действительно подходит!\n\n"
         "Только не забывай: я ещё учусь и не знаю некоторых слов!\n"
         "Не расстраивайся, если я ругаюсь на твоё слово — мне есть чему учиться :)\n\n"
         "Кстати, иногда я могу «выключаться», потому что живу в контейнере!\n"
@@ -786,6 +789,7 @@ def main():
         ],
         states={
             ASK_LENGTH: [
+                CommandHandler("feedback", feedback_not_allowed_ask),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_length),
                 CommandHandler("start", ignore_ask),
                 CommandHandler("play", ignore_ask),
@@ -797,6 +801,7 @@ def main():
                 CommandHandler("feedback", feedback_not_allowed_ask),
             ],
             GUESSING: [
+                CommandHandler("feedback", feedback_not_allowed_guess),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
                 CommandHandler("my_letters", my_letters),
                 CommandHandler("start", ignore_guess),
@@ -804,7 +809,6 @@ def main():
                 CommandHandler("global_stats", stats_not_allowed_during),
                 CommandHandler("play", ignore_guess),
                 CommandHandler("reset", reset),
-                CommandHandler("feedback", feedback_not_allowed_guess),
             ],
         },
         fallbacks=[
