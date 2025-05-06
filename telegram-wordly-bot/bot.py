@@ -63,15 +63,11 @@ async def set_commands(app):
             BotCommand("dump_activity", "Скачать user_activity.json"),
             BotCommand("suggestions_view", "Посмотреть фидбек юзеров"),
             BotCommand("suggestions_remove", "Удалить что-то из фидбека"),
+            BotCommand("broadcast_start", "Отправить сообщение всем юзерам"),
+            BotCommand("broadcast_cancel", "Отменить отправку")
         ],
         scope=BotCommandScopeChat(chat_id=ADMIN_ID)
     )
-
-KNOWN_CMD = [
-    "start", "play", "reset", "my_letters",
-    "my_stats", "global_stats", "feedback",
-    "dump_activity", "cancel", "suggestions_view", "suggestions_remove"
-]
 
 def load_suggestions() -> dict:
     if not SUGGESTIONS_FILE.exists():
@@ -192,7 +188,7 @@ def update_user_activity(user) -> None:
     save_store(store)
 
 # --- Константы и словарь ---
-ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT= range(5)
+ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= range(6)
 
 # инициализация морфоанализатора
 morph = pymorphy2.MorphAnalyzer(lang="ru")
@@ -269,11 +265,36 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 
 # --- Обработчики команд ---
 
-async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(
-            "Неизвестная команда. Чтобы начать игру, нажмите /play, "
-            "для списка команд — /start."
-        )
+async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # только админ
+    context.user_data["in_broadcast"] = True
+    if update.effective_user.id != ADMIN_ID:
+        return
+    await update.message.reply_text("Введите текст рассылки для всех пользователей:")
+    return BROADCAST
+
+async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    store = load_store()      # берём тех, кого мы когда-то записали
+    failed = []
+    for uid in store["users"].keys():
+        try:
+            await context.bot.send_message(chat_id=int(uid), text=text)
+        except Exception:
+            failed.append(uid)
+    msg = "✅ Рассылка успешно отправлена!"
+    if failed:
+        msg += f"\nНе удалось доставить сообщения пользователям: {', '.join(failed)}"
+    await update.message.reply_text(msg)
+    context.user_data.pop("in_broadcast", None)
+    context.user_data["just_done"] = True
+    return ConversationHandler.END
+
+async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Рассылка отменена.")
+    context.user_data.pop("in_broadcast", None)
+    context.user_data["just_done"] = True
+    return ConversationHandler.END
 
 async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # только админ
@@ -317,7 +338,8 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
     # только админ
     if update.effective_user.id != ADMIN_ID:
         return ConversationHandler.END
-
+    
+    context.user_data["in_remove"] = True
     text = update.message.text.strip()
     sugg = load_suggestions()
     removed = {"black": [], "white": []}
@@ -953,15 +975,23 @@ def main():
     )
     app.add_handler(remove_conv)
 
+    broadcast_conv = ConversationHandler(
+    entry_points=[CommandHandler("broadcast", broadcast_start)],
+    states={
+        BROADCAST: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_send),
+        ],
+    },
+    fallbacks=[CommandHandler("cancel", broadcast_cancel)],
+    allow_reentry=True,
+    )
+    app.add_handler(broadcast_conv)
+
     app.add_handler(
     MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_text),
     group=99
     )
 
-    app.add_handler(
-  MessageHandler(filters.Regex(r'^/'), unknown_command),
-  group=100
-    )
     # Глобальные
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("start", start))
