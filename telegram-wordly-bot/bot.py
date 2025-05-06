@@ -263,13 +263,17 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 # --- Обработчики команд ---
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # если флаг game_active = True (выбор длины или игра) — ничего не делаем
+    # 1) если пользователь в процессе игры/выбора длины
     if context.user_data.get("game_active"):
         return
-    # иначе бот вне игры, любой текст — это не команда
+    # 2) или в процессе фидбека
+    if context.user_data.get("feedback_state") is not None:
+        return
+
+    # иначе — сообщение вне игры и не диалога фидбека
     await update.message.reply_text(
-        "Я не обрабатываю обычные слова 😕\n"
-        "Чтобы начать новую игру, введи команду /play."
+        "Я не обрабатываю слова просто так😕\n"
+        "Чтобы начать игру, введи /play."
     )
 
 async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -304,6 +308,7 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("feedback_state", None)
     text = update.message.text.strip()
     if text == "Отмена":
         await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
@@ -325,6 +330,7 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("feedback_state", None)
     word = update.message.text.strip().lower()
     target = context.user_data["fb_target"]
 
@@ -365,6 +371,7 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("feedback_state", None)
     await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
