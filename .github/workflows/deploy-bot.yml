@@ -3,6 +3,8 @@ name: Auto-Deploy Wordly Bot
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'telegram-wordly-bot/**'
 
 jobs:
   deploy:
