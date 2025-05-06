@@ -917,13 +917,11 @@ def main():
         logger.error("BOT_TOKEN не установлен")
         return
 
-    persistence = PicklePersistence(filepath='conversation_state.pkl')
 
     app = (
         ApplicationBuilder()
         .token(token)
         .post_init(set_commands)
-        .persistence(persistence)
         .build()
     )
 	
