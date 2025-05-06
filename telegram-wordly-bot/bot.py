@@ -809,7 +809,6 @@ def main():
         },
         fallbacks=[
             CommandHandler("reset", reset),
-            CommandHandler("cancel", feedback_cancel)
        ],
     )
     app.add_handler(conv)
