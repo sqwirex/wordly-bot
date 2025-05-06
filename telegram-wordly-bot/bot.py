@@ -267,12 +267,12 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store = load_store()
     uid = str(update.effective_user.id)
     game_in_store = "current_game" in store["users"].get(uid, {})
-    if game_in_store:
+    if game_in_store and context.user_data.get("game_active"):
         return  # если игра ведётся — игнорируем
     # иначе реагируем на любой чистый текст
     await update.message.reply_text(
         "Я не обрабатываю обычные слова 😕\n"
-        "Чтобы начать игру, введи команду /play."
+        "Чтобы начать игру, введи /play."
     )
 
 async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
