@@ -458,6 +458,7 @@ async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
             )
 
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["state"] = ASK_LENGTH
     update_user_activity(update.effective_user)
     context.user_data["game_active"] = True
     store = load_store()
@@ -534,6 +535,7 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GUESSING
 
 async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["state"] = GUESSING
     user_id = str(update.effective_user.id)
     store = load_store()
     user_entry = store["users"].setdefault(user_id, {
@@ -730,7 +732,8 @@ async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def only_outside_game(update, context):
     await update.message.reply_text("Эту команду можно использовать только вне игры.")
-    return ConversationHandler.END
+    # вернём то состояние, в котором сейчас юзер:
+    return context.user_data.get("state", ConversationHandler.END)
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
