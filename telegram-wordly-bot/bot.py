@@ -616,7 +616,7 @@ async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "guesses": cg["guesses"],
         })
         await update.message.reply_text(
-            f"У тебя есть незавершённая игра: {len(cg['secret'])}-буквенное слово, ты на попытке {cg['attempts']}. Вводи догадку:"
+            f"Продолжаем игру: {len(cg['secret'])}-буквенное слово, ты на попытке {cg['attempts']}. Вводи догадку:"
         )
         return GUESSING
     
