@@ -680,6 +680,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Удаляем текущее состояние игры
         del user_entry["current_game"]
         context.user_data.pop("game_active", None)
+        context.user_data["just_done"] = True
         save_store(store)
         return ConversationHandler.END
 
@@ -702,6 +703,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         del user_entry["current_game"]
+        context.user_data["just_done"] = True
         context.user_data.pop("game_active", None)
         save_store(store)
         return ConversationHandler.END
