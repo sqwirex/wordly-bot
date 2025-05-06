@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
 from telegram import InputFile
-from telegram.ext import PicklePersistence
 
 from telegram import (
     Update,
@@ -27,11 +26,8 @@ from dotenv import load_dotenv
 
 from telegram import BotCommand, BotCommandScopeChat
 
-
 # Загрузка .env
 load_dotenv()
-
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 # Логирование
 logging.basicConfig(
@@ -40,15 +36,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 # Файл для активности пользователей
 USER_FILE = Path("user_activity.json")
 VOCAB_FILE = Path("vocabulary.json")
 with VOCAB_FILE.open("r", encoding="utf-8") as f:
     vocabulary = json.load(f)
-
 # файл для предложений пользователей
 SUGGESTIONS_FILE = Path("suggestions.json")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 async def set_commands(app):
     
@@ -158,7 +153,7 @@ def update_user_activity(user) -> None:
     - first_name, last_name, username
     - is_bot, is_premium, language_code
     - last_seen_msk (по московскому времени)
-    - stats (если ещё нет): games_played, wins, losses
+    - stats (если ещё нет): games_played, wins, losses, win rate
     """
     store = load_store()
     uid = str(user.id)
@@ -194,7 +189,7 @@ ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= r
 # инициализация морфоанализатора
 morph = pymorphy2.MorphAnalyzer(lang="ru")
 
-# частотный порог (регулируйте по вкусу)
+# частотный порог (регулируется по вкусу от 0 до 7)
 ZIPF_THRESHOLD = 2.5
 
 BLACK_LIST = set(vocabulary.get("black_list", []))
@@ -218,7 +213,6 @@ WORDLIST = sorted(_base | {w for w in WHITE_LIST if 4 <= len(w) <= 11})
 
 GREEN, YELLOW, RED, UNK = "🟩", "🟨", "🟥", "⬜"
 
-
 def make_feedback(secret: str, guess: str) -> str:
     fb = [None] * len(guess)
     secret_chars = list(secret)
@@ -236,7 +230,6 @@ def make_feedback(secret: str, guess: str) -> str:
             else:
                 fb[i] = RED
     return "".join(fb)
-
 
 def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
     status: dict[str, str] = {}
@@ -263,8 +256,39 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
                     status[ch] = "red"
     return status
 
-
 # --- Обработчики команд ---
+
+async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Периодически (и сразу при старте) шлёт user_activity.json администратору.
+    Если файл слишком большой, шлёт его как документ.
+    """
+    ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+    activity_path = USER_FILE
+    if not activity_path.exists():
+        return
+
+    content = activity_path.read_text(encoding="utf-8")
+    # Ограничение Telegram — примерно 4096 символов
+    MAX_LEN = 4000
+
+    if len(content) <= MAX_LEN:
+        # Можно втиснуть в одно сообщение
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"📋 Текущий user_activity.json:\n<pre>{content}</pre>",
+            parse_mode="HTML"
+        )
+    else:
+        # Слишком длинное — отправляем как файл
+        from telegram import InputFile
+        with activity_path.open("rb") as f:
+            await context.bot.send_document(
+                chat_id=ADMIN_ID,
+                document=InputFile(f, filename="user_activity.json"),
+                caption="📁 user_activity.json (слишком большой для текста)"
+            )
+
 
 async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
     """
@@ -290,113 +314,6 @@ async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.warning(f"Не смогли напомнить {uid}: {e}")
 
-async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # только админ
-    context.user_data["in_broadcast"] = True
-    if update.effective_user.id != ADMIN_ID:
-        return
-    await update.message.reply_text("Введите текст рассылки для всех пользователей:")
-    return BROADCAST
-
-async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    store = load_store()      # берём тех, кого мы когда-то записали
-    failed = []
-    for uid in store["users"].keys():
-        try:
-            await context.bot.send_message(chat_id=int(uid), text=text)
-        except Exception:
-            failed.append(uid)
-    msg = "✅ Рассылка успешно отправлена!"
-    if failed:
-        msg += f"\nНе удалось доставить сообщения пользователям: {', '.join(failed)}"
-    await update.message.reply_text(msg)
-    context.user_data.pop("in_broadcast", None)
-    context.user_data["just_done"] = True
-    return ConversationHandler.END
-
-async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Рассылка отменена.")
-    context.user_data.pop("in_broadcast", None)
-    return ConversationHandler.END
-
-async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # только админ
-    if update.effective_user.id != ADMIN_ID:
-        return
-    sugg = load_suggestions()
-    black = sugg.get("black", [])
-    white = sugg.get("white", [])
-    text = (
-        "Предложения для чёрного списка:\n"
-        + (", ".join(f'"{w}"' for w in black) if black else "— пусто")
-        + "\n\nПредложения для белого списка:\n"
-        + (", ".join(f'"{w}"' for w in white) if white else "— пусто")
-    )
-    await update.message.reply_text(text)
-
-
-async def suggestions_remove_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Только админ
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    # Блокируем во время игры
-    store = load_store()
-    u = store["users"].get(str(update.effective_user.id), {})
-    if "current_game" in u or context.user_data.get("game_active"):
-        await update.message.reply_text("Эту команду можно использовать только вне игры.")
-        return ConversationHandler.END
-
-    # Если всё ок — запускаем диалог удаления
-    await update.message.reply_text(
-        "Введи, что удалить (формат):\n"
-        "black: слово1, слово2\n"
-        "white: слово3, слово4\n\n"
-        "Или /cancel для отмены."
-    )
-    return REMOVE_INPUT
-
-
-async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # только админ
-    if update.effective_user.id != ADMIN_ID:
-        return ConversationHandler.END
-    
-    context.user_data["in_remove"] = True
-    text = update.message.text.strip()
-    sugg = load_suggestions()
-    removed = {"black": [], "white": []}
-
-    # парсим построчно
-    for line in text.splitlines():
-        if ":" not in line:
-            continue
-        key, vals = line.split(":", 1)
-        key = key.strip().lower()
-        if key not in ("black", "white"):
-            continue
-        # извлекаем слова через запятую
-        words = [w.strip().lower() for w in vals.split(",") if w.strip()]
-        for w in words:
-            if w in sugg[key]:
-                sugg[key].remove(w)
-                removed[key].append(w)
-
-    save_suggestions(sugg)
-
-    # формируем ответ
-    parts = []
-    if removed["black"]:
-        parts.append(f'Из чёрного удалено: {", ".join(removed["black"])}')
-    if removed["white"]:
-        parts.append(f'Из белого удалено: {", ".join(removed["white"])}')
-    if not parts:
-        parts = ["Ничего не удалено."]
-    await update.message.reply_text("\n".join(parts))
-    context.user_data.pop("in_remove", None)
-    context.user_data["just_done"] = True
-    return ConversationHandler.END
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # если сейчас в игре или в фидбеке — молчим
@@ -409,128 +326,6 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Чтобы начать игру, введи /play."
     )
 
-async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # запретим во время игры
-    store = load_store()
-    u = store["users"].get(str(update.effective_user.id), {})
-    if "current_game" in u:
-        await update.message.reply_text(
-            "Нельзя отправлять фидбек пока идёт игра. Сначала закончи играть или нажми /reset.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return ConversationHandler.END
-    
-    if context.user_data.get("game_active"):
-        await update.message.reply_text(
-            "Нельзя отправлять фидбек пока идёт игра. Сначала закончи играть или нажми /reset.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return ConversationHandler.END
-
-    # предлагаем выбрать список
-    keyboard = [
-        ["Чёрный список", "Белый список"],
-        ["Отмена"]
-    ]
-    markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("Куда добавить слово?", reply_markup=markup)
-
-    # запомним текущее состояние
-    context.user_data["feedback_state"] = FEEDBACK_CHOOSE
-    context.user_data["in_feedback"] = True
-    return FEEDBACK_CHOOSE
-
-
-async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if text == "Отмена":
-        await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
-        context.user_data.pop("in_feedback", None)
-        context.user_data["just_done"] = True
-        return ConversationHandler.END
-
-    if text not in ("Чёрный список", "Белый список"):
-        await update.message.reply_text("Пожалуйста, нажимайте одну из кнопок.")
-        return FEEDBACK_CHOOSE
-
-    # куда кладём
-    context.user_data["fb_target"] = "black" if text == "Чёрный список" else "white"
-    # убираем клавиатуру и спрашиваем слово
-    await update.message.reply_text(
-        "Введите слово для предложения:", reply_markup=ReplyKeyboardRemove()
-    )
-
-    context.user_data["feedback_state"] = FEEDBACK_WORD
-    return FEEDBACK_WORD
-
-
-async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    word = update.message.text.strip().lower()
-    target = context.user_data["fb_target"]
-
-    # подтянем свежие предложения
-    suggestions = load_suggestions()
-
-    if target == "black":
-        if word not in WORDLIST:
-            resp = "Нельзя: такого слова нет в основном словаре."
-        elif word in vocabulary.get("black_list", []) or word in suggestions["black"]:
-            resp = "Нельзя: слово уже в чёрном списке или вы его уже предлагали."
-        else:
-            suggestions["black"].append(word)
-            save_suggestions(suggestions)
-            resp = "Спасибо, добавил в предложения для чёрного списка."
-    else:  # white
-        if word in WORDLIST:
-            resp = "Нельзя: такое слово уже есть в основном словаре."
-        elif word in vocabulary.get("white_list", []) or word in suggestions["white"]:
-            resp = "Нельзя: слово уже в белом списке или вы его уже предлагали."
-        else:
-            suggestions["white"].append(word)
-            save_suggestions(suggestions)
-            resp = "Спасибо, добавил в предложения для белого списка."
-
-    await update.message.reply_text(resp)
-    context.user_data.pop("in_feedback", None)
-    context.user_data["just_done"] = True
-    return ConversationHandler.END
-
-
-async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # любой посторонний ввод заглушаем
-    await update.message.reply_text(
-        "Сейчас идёт ввод для фидбека, нельзя использовать команды."
-    )
-    # возвращаемся в текущее состояние
-    return context.user_data.get("feedback_state", FEEDBACK_CHOOSE)
-
-async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    
-    await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
-async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    path = USER_FILE  # это Path("user_activity.json")
-    if not path.exists():
-        return await update.message.reply_text("Файл user_activity.json не найден.")
-
-    # прочитаем текст, и если короткий — отправим как сообщение
-    content = path.read_text("utf-8")
-    if len(content) < 3000:
-        # отправляем в кодовом блоке
-        return await update.message.reply_text(
-            f"<pre>{content}</pre>", parse_mode="HTML"
-        )
-
-    # иначе — отправляем как документ
-    with path.open("rb") as f:
-        await update.message.reply_document(
-            document=InputFile(f, filename=path.name),
-            caption="📁 user_activity.json"
-        )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
@@ -569,36 +364,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "И еще, не забывай, буква Ё ≠ Е. Удачи!"
     )
 
-async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
-    """
-    Периодически (и сразу при старте) шлёт user_activity.json администратору.
-    Если файл слишком большой, шлёт его как документ.
-    """
-    ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
-    activity_path = USER_FILE
-    if not activity_path.exists():
-        return
-
-    content = activity_path.read_text(encoding="utf-8")
-    # Ограничение Telegram — примерно 4096 символов
-    MAX_LEN = 4000
-
-    if len(content) <= MAX_LEN:
-        # Можно втиснуть в одно сообщение
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=f"📋 Текущий user_activity.json:\n<pre>{content}</pre>",
-            parse_mode="HTML"
-        )
-    else:
-        # Слишком длинное — отправляем как файл
-        from telegram import InputFile
-        with activity_path.open("rb") as f:
-            await context.bot.send_document(
-                chat_id=ADMIN_ID,
-                document=InputFile(f, filename="user_activity.json"),
-                caption="📁 user_activity.json (слишком большой для текста)"
-            )
 
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["state"] = ASK_LENGTH
@@ -623,25 +388,7 @@ async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Сколько букв в слове? (4–11)")
     return ASK_LENGTH
 
-async def feedback_not_allowed_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Нельзя отправлять фидбек пока вы выбираете длину слова. "
-        "Сначала укажите длину (4–11)."
-    )
-    return ASK_LENGTH
 
-async def feedback_not_allowed_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Нельзя отправлять фидбек во время игры. "
-        "Сначала закончите игру или /reset."
-    )
-    return GUESSING
-
-async def my_letters_during_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Пользователь нажал /my_letters до того, как выбрал длину
-    await update.message.reply_text("Нужно ввести число от 4 до 11.")
-    return ASK_LENGTH
-	
 async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     text = update.message.text.strip()
@@ -678,6 +425,7 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     return GUESSING
+
 
 async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -778,62 +526,36 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_store(store)
     return GUESSING
 
-async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает личную статистику — только вне игры."""
-    update_user_activity(update.effective_user)
-    store = load_store()
-    uid = str(update.effective_user.id)
-    user = store["users"].get(uid)
-    if not user or "current_game" in user:
-        await update.message.reply_text("Эту команду можно использовать только вне игры.")
-        return
-    s = user.get("stats", {})
-    await update.message.reply_text(
-        "```"
-        f"🧑 Ваши результаты:\n\n"
-        f"🎲 Всего игр: {s.get('games_played',0)}\n"
-        f"🏆 Побед: {s.get('wins',0)}\n"
-        f"💔 Поражений: {s.get('losses',0)}\n"
-        f"📊 Процент: {s.get('win_rate',0.0)*100:.2f}%"
-        "```",
-        parse_mode="Markdown"
-    )
 
-async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Команды /start и /play не работают во время игры — сначала /reset.")
+    return ASK_LENGTH
+
+
+async def ignore_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Команды /start и /play не работают во время игры — сначала /reset.")
+    return GUESSING
+
+
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
-    """Показывает глобальную статистику — только вне игры."""
+
     store = load_store()
-    g = store["global"]
-    # если во время партии — запрет
     uid = str(update.effective_user.id)
     user = store["users"].get(uid)
     if user and "current_game" in user:
-        await update.message.reply_text("Эту команду можно использовать только вне игры.")
-        return
-    
-    tp = g.get("top_player", {})
-    if tp:
-        top_line = f"Сильнейший: @{tp['username']} ({tp['wins']} побед)\n\n"
-    else:
-        top_line = ""
-    
-    await update.message.reply_text(
-        "```"
-        f"🌐 Глобальная статистика:\n\n"
-        f"🎲 Всего игр: {g['total_games']}\n"
-        f"🏆 Побед: {g['total_wins']}\n"
-        f"💔 Поражений: {g['total_losses']}\n"
-        f"📊 Процент: {g['win_rate']*100:.2f}%\n\n"
-        f"{top_line}"
-        "```",
-        parse_mode="Markdown"
-    )
+        del user["current_game"]
+        save_store(store)
 
-async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    context.user_data.pop("game_active", None)
+    await update.message.reply_text("Прогресс сброшен. Жду /play для новой игры.")
+    return ConversationHandler.END
+
+
+async def reset_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
-    await update.message.reply_text("Эту команду можно использовать только во время игры.")
-    # остаёмся в том же состоянии ASK_LENGTH
-    return ASK_LENGTH
+    await update.message.reply_text("Сейчас нечего сбрасывать — начните игру: /play")
 
 
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -876,47 +598,340 @@ async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
     return GUESSING
 
+
+async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_user_activity(update.effective_user)
+    state = context.user_data.get("state")
+    if state == ASK_LENGTH:
+        # мы ещё в фазе выбора длины
+        await update.message.reply_text("Нужно ввести число от 4 до 11.")
+        return ASK_LENGTH
+    else:
+        # если вообще ни в одном ConversationHandler-е
+        await update.message.reply_text("Эту команду можно использовать только во время игры.")
+        return ConversationHandler.END
+
+
+async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает личную статистику — только вне игры."""
+    update_user_activity(update.effective_user)
+    store = load_store()
+    uid = str(update.effective_user.id)
+    user = store["users"].get(uid)
+    if not user or "current_game" in user:
+        await update.message.reply_text("Эту команду можно использовать только вне игры.")
+        return
+    s = user.get("stats", {})
+    await update.message.reply_text(
+        "```"
+        f"🧑 Ваши результаты:\n\n"
+        f"🎲 Всего игр: {s.get('games_played',0)}\n"
+        f"🏆 Побед: {s.get('wins',0)}\n"
+        f"💔 Поражений: {s.get('losses',0)}\n"
+        f"📊 Процент: {s.get('win_rate',0.0)*100:.2f}%"
+        "```",
+        parse_mode="Markdown"
+    )
+
+
+async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_user_activity(update.effective_user)
+    """Показывает глобальную статистику — только вне игры."""
+    store = load_store()
+    g = store["global"]
+    # если во время партии — запрет
+    uid = str(update.effective_user.id)
+    user = store["users"].get(uid)
+    if user and "current_game" in user:
+        await update.message.reply_text("Эту команду можно использовать только вне игры.")
+        return
+    
+    tp = g.get("top_player", {})
+    if tp:
+        top_line = f"Сильнейший: @{tp['username']} ({tp['wins']} побед)\n\n"
+    else:
+        top_line = ""
+    
+    await update.message.reply_text(
+        "```"
+        f"🌐 Глобальная статистика:\n\n"
+        f"🎲 Всего игр: {g['total_games']}\n"
+        f"🏆 Побед: {g['total_wins']}\n"
+        f"💔 Поражений: {g['total_losses']}\n"
+        f"📊 Процент: {g['win_rate']*100:.2f}%\n\n"
+        f"{top_line}"
+        "```",
+        parse_mode="Markdown"
+    )
+
+
 async def only_outside_game(update, context):
     await update.message.reply_text("Эту команду можно использовать только вне игры.")
     # вернём то состояние, в котором сейчас юзер:
     return context.user_data.get("state", ConversationHandler.END)
 
-async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    update_user_activity(update.effective_user)
 
+async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # запретим во время игры
     store = load_store()
-    uid = str(update.effective_user.id)
-    user = store["users"].get(uid)
-    if user and "current_game" in user:
-        del user["current_game"]
-        save_store(store)
+    u = store["users"].get(str(update.effective_user.id), {})
+    if "current_game" in u:
+        await update.message.reply_text(
+            "Нельзя отправлять фидбек пока идёт игра. Сначала закончи играть или нажми /reset.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return ConversationHandler.END
+    
+    if context.user_data.get("game_active"):
+        await update.message.reply_text(
+            "Нельзя отправлять фидбек пока идёт игра. Сначала закончи играть или нажми /reset.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return ConversationHandler.END
 
-    context.user_data.clear()
-    context.user_data.pop("game_active", None)
-    await update.message.reply_text("Прогресс сброшен. Жду /play для новой игры.")
+    # предлагаем выбрать список
+    keyboard = [
+        ["Чёрный список", "Белый список"],
+        ["Отмена"]
+    ]
+    markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text("Куда добавить слово?", reply_markup=markup)
+
+    # запомним текущее состояние
+    context.user_data["feedback_state"] = FEEDBACK_CHOOSE
+    context.user_data["in_feedback"] = True
+    return FEEDBACK_CHOOSE
+
+
+async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if text == "Отмена":
+        await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
+        context.user_data.pop("in_feedback", None)
+        context.user_data["just_done"] = True
+        return ConversationHandler.END
+
+    if text not in ("Чёрный список", "Белый список"):
+        await update.message.reply_text("Пожалуйста, нажимайте одну из кнопок.")
+        return FEEDBACK_CHOOSE
+
+    # куда кладём
+    context.user_data["fb_target"] = "black" if text == "Чёрный список" else "white"
+    # убираем клавиатуру и спрашиваем слово
+    await update.message.reply_text(
+        "Введите слово для предложения:", reply_markup=ReplyKeyboardRemove()
+    )
+
+    context.user_data["feedback_state"] = FEEDBACK_WORD
+    return FEEDBACK_WORD
+
+
+async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    word = update.message.text.strip().lower()
+    target = context.user_data["fb_target"]
+
+    # подтянем свежие предложения
+    suggestions = load_suggestions()
+
+    if target == "black":
+        if word not in WORDLIST:
+            resp = "Нельзя: такого слова нет в основном словаре."
+        elif word in vocabulary.get("black_list", []) or word in suggestions["black"]:
+            resp = "Нельзя: слово уже в чёрном списке или вы его уже предлагали."
+        else:
+            suggestions["black"].append(word)
+            save_suggestions(suggestions)
+            resp = "Спасибо, добавил в предложения для чёрного списка."
+    else:  # white
+        if word in WORDLIST:
+            resp = "Нельзя: такое слово уже есть в основном словаре."
+        elif word in vocabulary.get("white_list", []) or word in suggestions["white"]:
+            resp = "Нельзя: слово уже в белом списке или вы его уже предлагали."
+        else:
+            suggestions["white"].append(word)
+            save_suggestions(suggestions)
+            resp = "Спасибо, добавил в предложения для белого списка."
+
+    await update.message.reply_text(resp)
+    context.user_data.pop("in_feedback", None)
+    context.user_data["just_done"] = True
     return ConversationHandler.END
 
-async def reset_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    update_user_activity(update.effective_user)
-    await update.message.reply_text("Сейчас нечего сбрасывать — начните игру: /play")
 
-IGN_MSG = "Команды /start и /play не работают во время игры — сначала /reset."
+async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    
+    await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
 
-async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(IGN_MSG)
+
+async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # любой посторонний ввод заглушаем
+    await update.message.reply_text(
+        "Сейчас идёт ввод для фидбека, нельзя использовать команды."
+    )
+    # возвращаемся в текущее состояние
+    return context.user_data.get("feedback_state", FEEDBACK_CHOOSE)
+
+
+async def feedback_not_allowed_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Нельзя отправлять фидбек пока вы выбираете длину слова. "
+        "Сначала укажите длину (4–11)."
+    )
     return ASK_LENGTH
 
-async def ignore_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(IGN_MSG)
+
+async def feedback_not_allowed_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Нельзя отправлять фидбек во время игры. "
+        "Сначала закончите игру или /reset."
+    )
     return GUESSING
 
 
+
+async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    path = USER_FILE  # это Path("user_activity.json")
+    if not path.exists():
+        return await update.message.reply_text("Файл user_activity.json не найден.")
+
+    # прочитаем текст, и если короткий — отправим как сообщение
+    content = path.read_text("utf-8")
+    if len(content) < 3000:
+        # отправляем в кодовом блоке
+        return await update.message.reply_text(
+            f"<pre>{content}</pre>", parse_mode="HTML"
+        )
+
+    # иначе — отправляем как документ
+    with path.open("rb") as f:
+        await update.message.reply_document(
+            document=InputFile(f, filename=path.name),
+            caption="📁 user_activity.json"
+        )
+
+
+async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # только админ
+    if update.effective_user.id != ADMIN_ID:
+        return
+    sugg = load_suggestions()
+    black = sugg.get("black", [])
+    white = sugg.get("white", [])
+    text = (
+        "Предложения для чёрного списка:\n"
+        + (", ".join(f'"{w}"' for w in black) if black else "— пусто")
+        + "\n\nПредложения для белого списка:\n"
+        + (", ".join(f'"{w}"' for w in white) if white else "— пусто")
+    )
+    await update.message.reply_text(text)
+
+
+async def suggestions_remove_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Только админ
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    # Блокируем во время игры
+    store = load_store()
+    u = store["users"].get(str(update.effective_user.id), {})
+    if "current_game" in u or context.user_data.get("game_active"):
+        await update.message.reply_text("Эту команду можно использовать только вне игры.")
+        return ConversationHandler.END
+
+    # Если всё ок — запускаем диалог удаления
+    await update.message.reply_text(
+        "Введи, что удалить (формат):\n"
+        "black: слово1, слово2\n"
+        "white: слово3, слово4\n\n"
+        "Или /cancel для отмены."
+    )
+    return REMOVE_INPUT
+
+
+async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # только админ
+    if update.effective_user.id != ADMIN_ID:
+        return ConversationHandler.END
+    
+    context.user_data["in_remove"] = True
+    text = update.message.text.strip()
+    sugg = load_suggestions()
+    removed = {"black": [], "white": []}
+
+    # парсим построчно
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        key, vals = line.split(":", 1)
+        key = key.strip().lower()
+        if key not in ("black", "white"):
+            continue
+        # извлекаем слова через запятую
+        words = [w.strip().lower() for w in vals.split(",") if w.strip()]
+        for w in words:
+            if w in sugg[key]:
+                sugg[key].remove(w)
+                removed[key].append(w)
+
+    save_suggestions(sugg)
+
+    # формируем ответ
+    parts = []
+    if removed["black"]:
+        parts.append(f'Из чёрного удалено: {", ".join(removed["black"])}')
+    if removed["white"]:
+        parts.append(f'Из белого удалено: {", ".join(removed["white"])}')
+    if not parts:
+        parts = ["Ничего не удалено."]
+    await update.message.reply_text("\n".join(parts))
+    context.user_data.pop("in_remove", None)
+    context.user_data["just_done"] = True
+    return ConversationHandler.END
+
+
+async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # только админ
+    context.user_data["in_broadcast"] = True
+    if update.effective_user.id != ADMIN_ID:
+        return
+    await update.message.reply_text("Введите текст рассылки для всех пользователей:")
+    return BROADCAST
+
+
+async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    store = load_store()      # берём тех, кого мы когда-то записали
+    failed = []
+    for uid in store["users"].keys():
+        try:
+            await context.bot.send_message(chat_id=int(uid), text=text)
+        except Exception:
+            failed.append(uid)
+    msg = "✅ Рассылка успешно отправлена!"
+    if failed:
+        msg += f"\nНе удалось доставить сообщения пользователям: {', '.join(failed)}"
+    await update.message.reply_text(msg)
+    context.user_data.pop("in_broadcast", None)
+    context.user_data["just_done"] = True
+    return ConversationHandler.END
+
+
+async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Рассылка отменена.")
+    context.user_data.pop("in_broadcast", None)
+    return ConversationHandler.END
+
+
 def main():
+    
     token = os.getenv("BOT_TOKEN")
     if not token:
         logger.error("BOT_TOKEN не установлен")
         return
-
 
     app = (
         ApplicationBuilder()
@@ -925,7 +940,7 @@ def main():
         .build()
     )
 	
-    # send once immediately on launch
+    # отправляем один раз при загрузке
     app.job_queue.run_once(send_activity_periodic, when=0)
     app.job_queue.run_once(send_unfinished_games, when=1)
 
@@ -944,7 +959,6 @@ def main():
     fallbacks=[CommandHandler("cancel", feedback_cancel)],
     allow_reentry=True
     )
-    
     app.add_handler(feedback_conv)
     
     conv = ConversationHandler(
@@ -959,20 +973,19 @@ def main():
                 CommandHandler("start", ignore_ask),
                 CommandHandler("play", ignore_ask),
                 CommandHandler("reset", reset),
+		CommandHandler("my_letters", my_letters_not_allowed),
                 CommandHandler("my_stats", only_outside_game),
                 CommandHandler("global_stats", only_outside_game),
-		        CommandHandler("my_letters", my_letters_during_length),
-                CommandHandler("my_letters", my_letters_not_allowed),
             ],
             GUESSING: [
                 CommandHandler("feedback", feedback_not_allowed_guess),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
-                CommandHandler("my_letters", my_letters),
                 CommandHandler("start", ignore_guess),
+		CommandHandler("play", ignore_guess),
+                CommandHandler("reset", reset),
+		CommandHandler("my_letters", my_letters),
                 CommandHandler("my_stats", only_outside_game),
                 CommandHandler("global_stats", only_outside_game),
-                CommandHandler("play", ignore_guess),
-                CommandHandler("reset", reset),
             ],
         },
         fallbacks=[
@@ -1007,7 +1020,6 @@ def main():
     fallbacks=[CommandHandler("broadcast_cancel", broadcast_cancel)],
     allow_reentry=True,
     )
-
     app.add_handler(broadcast_conv)
 
     app.add_handler(
@@ -1016,17 +1028,14 @@ def main():
     )
 
     # Глобальные
-    app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("my_letters", my_letters_not_allowed))
     app.add_handler(CommandHandler("my_stats", my_stats))
     app.add_handler(CommandHandler("global_stats", global_stats))
     app.add_handler(CommandHandler("dump_activity", dump_activity))
 
     store = load_store()
-    for uid_str, udata in store["users"].items():
-        if "current_game" in udata:
-            pass
 
     app.run_polling(drop_pending_updates=True)
 
