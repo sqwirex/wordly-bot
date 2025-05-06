@@ -340,7 +340,7 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # любой посторонний ввод заглушаем
     await update.message.reply_text(
-        "Сейчас идёт ввод для фидбека: введите слово или /cancel, чтобы прервать."
+        "Сейчас идёт ввод для фидбека, нельзя использовать команды."
     )
     # возвращаемся в текущее состояние
     return context.user_data.get("feedback_state", FEEDBACK_CHOOSE)
@@ -457,7 +457,21 @@ async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text("Сколько букв в слове? (4–11)")
     return ASK_LENGTH
-	
+
+async def feedback_not_allowed_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Нельзя отправлять фидбек пока вы выбираете длину слова. "
+        "Сначала укажите длину (4–11)."
+    )
+    return ASK_LENGTH
+
+async def feedback_not_allowed_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Нельзя отправлять фидбек во время игры. "
+        "Сначала закончите игру или /reset."
+    )
+    return GUESSING
+
 async def my_letters_during_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Пользователь нажал /my_letters до того, как выбрал длину
     await update.message.reply_text("Нужно ввести число от 4 до 11.")
@@ -769,7 +783,6 @@ def main():
         entry_points=[
             CommandHandler("play", ask_length),
             CommandHandler("start", start),
-            CommandHandler("feedback", feedback_start)
         ],
         states={
             ASK_LENGTH: [
@@ -781,6 +794,7 @@ def main():
                 CommandHandler("global_stats", stats_not_allowed_during),
 		        CommandHandler("my_letters", my_letters_during_length),
                 CommandHandler("my_letters", my_letters_not_allowed),
+                CommandHandler("feedback", feedback_not_allowed_ask),
             ],
             GUESSING: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
@@ -790,6 +804,7 @@ def main():
                 CommandHandler("global_stats", stats_not_allowed_during),
                 CommandHandler("play", ignore_guess),
                 CommandHandler("reset", reset),
+                CommandHandler("feedback", feedback_not_allowed_guess),
             ],
         },
         fallbacks=[
