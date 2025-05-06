@@ -373,8 +373,8 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     context.user_data.pop("feedback_mode", None)
+    await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
