@@ -269,6 +269,12 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 
 # --- Обработчики команд ---
 
+async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            "Неизвестная команда. Чтобы начать игру, нажмите /play, "
+            "для списка команд — /start."
+        )
+
 async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # только админ
     if update.effective_user.id != ADMIN_ID:
@@ -952,20 +958,13 @@ def main():
     group=99
     )
 
-    async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text(
-            "Неизвестная команда. Чтобы начать игру, нажмите /play, "
-            "для списка команд — /start."
-        )
-    
     app.add_handler(
     MessageHandler(
-        filters.COMMAND
-        & ~filters.Command(KNOWN_CMD),
+        filters.COMMAND & ~filters.Command(KNOWN_CMD),
         unknown_command
     ),
     group=100
-    )
+)
 
     # Глобальные
     app.add_handler(CommandHandler("reset", reset_global))
