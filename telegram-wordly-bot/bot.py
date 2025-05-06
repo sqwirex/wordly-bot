@@ -280,17 +280,24 @@ async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def suggestions_remove_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # только админ
+    # Только админ
     if update.effective_user.id != ADMIN_ID:
         return
+
+    # Блокируем во время игры
+    store = load_store()
+    u = store["users"].get(str(update.effective_user.id), {})
+    if "current_game" in u or context.user_data.get("game_active"):
+        await update.message.reply_text("Эту команду можно использовать только вне игры.")
+        return ConversationHandler.END
+
+    # Если всё ок — запускаем диалог удаления
     await update.message.reply_text(
         "Введи, что удалить (формат):\n"
         "black: слово1, слово2\n"
         "white: слово3, слово4\n\n"
-        "Можно указать только один список или оба сразу.\n"
         "Или /cancel для отмены."
     )
-    context.user_data["in_remove"] = True
     return REMOVE_INPUT
 
 
