@@ -16,7 +16,6 @@ from telegram import (
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    CallbackQueryHandler,
     MessageHandler,
     ConversationHandler,
     filters,
@@ -267,10 +266,6 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1) если пользователь в процессе игры/выбора длины
     if context.user_data.get("game_active"):
         return
-    # 2) или в процессе фидбека
-    if context.user_data.get("feedback_mode"):
-        return
-
     # иначе — сообщение вне игры и не диалога фидбека
     await update.message.reply_text(
         "Я не обрабатываю слова просто так😕\n"
@@ -294,8 +289,6 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
-
-    context.user_data["feedback_mode"] = True
 
     # предлагаем выбрать список
     keyboard = [
@@ -336,7 +329,6 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = context.user_data["fb_target"]
 
     # подтянем свежие предложения
-    global suggestions
     suggestions = load_suggestions()
 
     if target == "black":
@@ -359,8 +351,6 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
             resp = "Спасибо, добавил в предложения для белого списка."
 
     await update.message.reply_text(resp)
-    for k in ("feedback_mode", "feedback_state", "fb_target"):
-        context.user_data.pop(k, None)
     return ConversationHandler.END
 
 
@@ -374,8 +364,6 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    for k in ("feedback_mode", "feedback_state", "fb_target"):
-        context.user_data.pop(k, None)
     await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
@@ -611,6 +599,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Удаляем текущее состояние игры
         del user_entry["current_game"]
+        context.user_data.pop("game_active", None)
         save_store(store)
         return ConversationHandler.END
 
@@ -633,6 +622,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         del user_entry["current_game"]
+        context.user_data.pop("game_active", None)
         save_store(store)
         return ConversationHandler.END
 
@@ -738,11 +728,9 @@ async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
     return GUESSING
 
-async def stats_not_allowed_during(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    update_user_activity(update.effective_user)
+async def only_outside_game(update, context):
     await update.message.reply_text("Эту команду можно использовать только вне игры.")
-    # возвращаем текущее состояние разговора, которое лежит в context.user_data
-    return context.user_data.get("state", context.user_data["state"])
+    return ConversationHandler.END
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
@@ -755,6 +743,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_store(store)
 
     context.user_data.clear()
+    context.user_data.pop("game_active", None)
     await update.message.reply_text("Прогресс сброшен. Жду /play для новой игры.")
     return ConversationHandler.END
 
@@ -807,7 +796,6 @@ def main():
         ],
     },
     fallbacks=[CommandHandler("cancel", feedback_cancel)],
-    allow_reentry=True,
     )
     
     app.add_handler(feedback_conv)
@@ -824,19 +812,18 @@ def main():
                 CommandHandler("start", ignore_ask),
                 CommandHandler("play", ignore_ask),
                 CommandHandler("reset", reset),
-                CommandHandler("my_stats", stats_not_allowed_during),
-                CommandHandler("global_stats", stats_not_allowed_during),
+                CommandHandler("my_stats", only_outside_game),
+                CommandHandler("global_stats", only_outside_game),
 		        CommandHandler("my_letters", my_letters_during_length),
                 CommandHandler("my_letters", my_letters_not_allowed),
-                CommandHandler("feedback", feedback_not_allowed_ask),
             ],
             GUESSING: [
                 CommandHandler("feedback", feedback_not_allowed_guess),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
                 CommandHandler("my_letters", my_letters),
                 CommandHandler("start", ignore_guess),
-                CommandHandler("my_stats", stats_not_allowed_during),
-                CommandHandler("global_stats", stats_not_allowed_during),
+                CommandHandler("my_stats", only_outside_game),
+                CommandHandler("global_stats", only_outside_game),
                 CommandHandler("play", ignore_guess),
                 CommandHandler("reset", reset),
             ],
