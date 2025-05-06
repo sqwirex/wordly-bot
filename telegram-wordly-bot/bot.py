@@ -799,7 +799,6 @@ def main():
             MessageHandler(filters.ALL, block_during_feedback),
         ],
     },
-    fallbacks=[CommandHandler("cancel", feedback_cancel)],
     allow_reentry=True
     )
     
