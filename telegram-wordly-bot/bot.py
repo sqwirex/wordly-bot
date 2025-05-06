@@ -293,7 +293,6 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Рассылка отменена.")
     context.user_data.pop("in_broadcast", None)
-    context.user_data["just_done"] = True
     return ConversationHandler.END
 
 async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
