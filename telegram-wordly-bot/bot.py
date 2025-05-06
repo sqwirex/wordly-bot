@@ -63,7 +63,7 @@ async def set_commands(app):
             BotCommand("dump_activity", "Скачать user_activity.json"),
             BotCommand("suggestions_view", "Посмотреть фидбек юзеров"),
             BotCommand("suggestions_remove", "Удалить что-то из фидбека"),
-            BotCommand("broadcast_start", "Отправить сообщение всем юзерам"),
+            BotCommand("broadcast", "Отправить сообщение всем юзерам"),
             BotCommand("broadcast_cancel", "Отменить отправку")
         ],
         scope=BotCommandScopeChat(chat_id=ADMIN_ID)
@@ -982,9 +982,10 @@ def main():
             MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_send),
         ],
     },
-    fallbacks=[CommandHandler("cancel", broadcast_cancel)],
+    fallbacks=[CommandHandler("broadcast_cancel", broadcast_cancel)],
     allow_reentry=True,
     )
+
     app.add_handler(broadcast_conv)
 
     app.add_handler(
