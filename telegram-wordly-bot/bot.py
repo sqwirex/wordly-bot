@@ -959,13 +959,9 @@ def main():
     )
 
     app.add_handler(
-    MessageHandler(
-        filters.COMMAND & ~filters.Command(KNOWN_CMD),
-        unknown_command
-    ),
-    group=100
-)
-
+  MessageHandler(filters.Regex(r'^/'), unknown_command),
+  group=100
+    )
     # Глобальные
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("start", start))
