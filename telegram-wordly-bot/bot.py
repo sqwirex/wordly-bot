@@ -262,6 +262,7 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 
 # --- Обработчики команд ---
 
+
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1) если пользователь в процессе игры/выбора длины
     if context.user_data.get("game_active"):
