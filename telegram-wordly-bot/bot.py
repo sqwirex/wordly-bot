@@ -290,6 +290,7 @@ async def suggestions_remove_start(update: Update, context: ContextTypes.DEFAULT
         "Можно указать только один список или оба сразу.\n"
         "Или /cancel для отмены."
     )
+    context.user_data["in_remove"] = True
     return REMOVE_INPUT
 
 
@@ -328,11 +329,13 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
     if not parts:
         parts = ["Ничего не удалено."]
     await update.message.reply_text("\n".join(parts))
+    context.user_data.pop("in_feedback", None)
+    context.user_data["just_feedback_done"] = True
     return ConversationHandler.END
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # если сейчас в игре или в фидбеке — молчим
-    if context.user_data.get("game_active") or context.user_data.get("in_feedback"):
+    if context.user_data.get("game_active") or context.user_data.get("in_feedback") or context.user_data.get("in_remove"):
         return
     if context.user_data.pop("just_feedback_done", False):
         return
