@@ -11,4 +11,3 @@ __pycache__/
 # данные пользователей
 **/user_activity.json
 **/suggestions.json
-**/conversation_state.pkl
