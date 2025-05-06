@@ -329,15 +329,15 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
     if not parts:
         parts = ["Ничего не удалено."]
     await update.message.reply_text("\n".join(parts))
-    context.user_data.pop("in_feedback", None)
-    context.user_data["just_feedback_done"] = True
+    context.user_data.pop("in_remove", None)
+    context.user_data["just_done"] = True
     return ConversationHandler.END
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # если сейчас в игре или в фидбеке — молчим
     if context.user_data.get("game_active") or context.user_data.get("in_feedback") or context.user_data.get("in_remove"):
         return
-    if context.user_data.pop("just_feedback_done", False):
+    if context.user_data.pop("just_done", False):
         return
     await update.message.reply_text(
         "Я не обрабатываю слова просто так😕\n"
@@ -381,7 +381,7 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "Отмена":
         await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
         context.user_data.pop("in_feedback", None)
-        context.user_data["just_feedback_done"] = True
+        context.user_data["just_done"] = True
         return ConversationHandler.END
 
     if text not in ("Чёрный список", "Белый список"):
@@ -427,7 +427,7 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(resp)
     context.user_data.pop("in_feedback", None)
-    context.user_data["just_feedback_done"] = True
+    context.user_data["just_done"] = True
     return ConversationHandler.END
 
 
