@@ -310,6 +310,7 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "Отмена":
         await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
         context.user_data.pop("in_feedback", None)
+        context.user_data["just_feedback_done"] = True
         return ConversationHandler.END
 
     if text not in ("Чёрный список", "Белый список"):
