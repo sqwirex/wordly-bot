@@ -528,14 +528,15 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["length"] = length
     context.user_data["attempts"] = 0
     context.user_data["guesses"] = []
+    context.user_data["state"] = GUESSING
 
     await update.message.reply_text(
         f"Я загадал слово из {length} букв. У тебя 6 попыток. Введи первую догадку:"
     )
+    
     return GUESSING
 
 async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["state"] = GUESSING
     user_id = str(update.effective_user.id)
     store = load_store()
     user_entry = store["users"].setdefault(user_id, {
