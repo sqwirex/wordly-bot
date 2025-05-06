@@ -280,9 +280,10 @@ async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(
                     chat_id=int(uid),
                     text=(
+                        f"Я вернулся из спячки!\n"
                         f"⏳ У вас есть незавершённая игра:\n"
                         f"{length}-буквенное слово, вы на попытке {attempts}.\n"
-                        "Пожалуйста, введите следующую догадку."
+                        "Введите следующую догадку, чтобы продолжить:"
                     )
                 )
             except Exception as e:
@@ -1021,12 +1022,13 @@ def main():
     app.add_handler(CommandHandler("dump_activity", dump_activity))
 
     store = load_store()
-    # Для каждого пользователя, у которого был current_game, 
-    # контекст загрузит его в context.user_data
-    for uid, udata in store["users"].items():
+    for uid_str, udata in store["users"].items():
         if "current_game" in udata:
-            # мы запомним это в user_data при первом обращении:
-            pass
+            uid = int(uid_str)
+            # флаг «я в игре» для вашего unknown_text
+            app.user_data[uid]["game_active"] = True
+            # нужен ещё флаг состояния, если вы его проверяете
+            app.user_data[uid]["state"] = GUESSING
 
     app.run_polling(drop_pending_updates=True)
 
