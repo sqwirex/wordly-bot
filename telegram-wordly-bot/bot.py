@@ -839,6 +839,11 @@ def main():
     )
     app.add_handler(conv)
 
+    app.add_handler(
+    MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_text),
+    group=99
+    )
+
     # Глобальные
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("start", start))
