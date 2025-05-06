@@ -61,6 +61,8 @@ async def set_commands(app):
             BotCommand("global_stats",  "Глобальная статистика"),
             BotCommand("feedback", "Жалоба на слово"),
             BotCommand("dump_activity", "Скачать user_activity.json"),
+            BotCommand("suggestions_view", "Посмотреть фидбек юзеров"),
+            BotCommand("suggestions_remove", "Удалить что-то из фидбека"),
         ],
         scope=BotCommandScopeChat(chat_id=ADMIN_ID)
     )
@@ -184,7 +186,7 @@ def update_user_activity(user) -> None:
     save_store(store)
 
 # --- Константы и словарь ---
-ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD = range(4)
+ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT= range(5)
 
 # инициализация морфоанализатора
 morph = pymorphy2.MorphAnalyzer(lang="ru")
@@ -261,6 +263,72 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 
 # --- Обработчики команд ---
 
+async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # только админ
+    if update.effective_user.id != ADMIN_ID:
+        return
+    sugg = load_suggestions()
+    black = sugg.get("black", [])
+    white = sugg.get("white", [])
+    text = (
+        "Предложения для чёрного списка:\n"
+        + (", ".join(f'"{w}"' for w in black) if black else "— пусто")
+        + "\n\nПредложения для белого списка:\n"
+        + (", ".join(f'"{w}"' for w in white) if white else "— пусто")
+    )
+    await update.message.reply_text(text)
+
+
+async def suggestions_remove_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # только админ
+    if update.effective_user.id != ADMIN_ID:
+        return
+    await update.message.reply_text(
+        "Введи, что удалить (формат):\n"
+        "black: слово1, слово2\n"
+        "white: слово3, слово4\n\n"
+        "Можно указать только один список или оба сразу.\n"
+        "Или /cancel для отмены."
+    )
+    return REMOVE_INPUT
+
+
+async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # только админ
+    if update.effective_user.id != ADMIN_ID:
+        return ConversationHandler.END
+
+    text = update.message.text.strip()
+    sugg = load_suggestions()
+    removed = {"black": [], "white": []}
+
+    # парсим построчно
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        key, vals = line.split(":", 1)
+        key = key.strip().lower()
+        if key not in ("black", "white"):
+            continue
+        # извлекаем слова через запятую
+        words = [w.strip().lower() for w in vals.split(",") if w.strip()]
+        for w in words:
+            if w in sugg[key]:
+                sugg[key].remove(w)
+                removed[key].append(w)
+
+    save_suggestions(sugg)
+
+    # формируем ответ
+    parts = []
+    if removed["black"]:
+        parts.append(f'Из чёрного удалено: {", ".join(removed["black"])}')
+    if removed["white"]:
+        parts.append(f'Из белого удалено: {", ".join(removed["white"])}')
+    if not parts:
+        parts = ["Ничего не удалено."]
+    await update.message.reply_text("\n".join(parts))
+    return ConversationHandler.END
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # если сейчас в игре или в фидбеке — молчим
@@ -844,6 +912,22 @@ def main():
        ],
     )
     app.add_handler(conv)
+
+    # 1) просмотр
+    app.add_handler(CommandHandler("suggestions_view", suggestions_view))
+
+    # 2) удаление через ConversationHandler
+    remove_conv = ConversationHandler(
+        entry_points=[CommandHandler("suggestions_remove", suggestions_remove_start)],
+        states={
+            REMOVE_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, suggestions_remove_process),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", feedback_cancel)],
+        allow_reentry=True,
+    )
+    app.add_handler(remove_conv)
 
     app.add_handler(
     MessageHandler(filters.TEXT & ~filters.COMMAND, unknown_text),
