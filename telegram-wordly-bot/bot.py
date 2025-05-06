@@ -359,7 +359,8 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
             resp = "Спасибо, добавил в предложения для белого списка."
 
     await update.message.reply_text(resp)
-    context.user_data.pop("feedback_mode", None)
+    for k in ("feedback_mode", "feedback_state", "fb_target"):
+        context.user_data.pop(k, None)
     return ConversationHandler.END
 
 
@@ -373,7 +374,8 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("feedback_mode", None)
+    for k in ("feedback_mode", "feedback_state", "fb_target"):
+        context.user_data.pop(k, None)
     await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
