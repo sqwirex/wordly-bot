@@ -263,10 +263,9 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 1) если пользователь в процессе игры/выбора длины
-    if context.user_data.get("game_active"):
+    # если сейчас в игре или в фидбеке — молчим
+    if context.user_data.get("game_active") or context.user_data.get("in_feedback"):
         return
-    # иначе — сообщение вне игры и не диалога фидбека
     await update.message.reply_text(
         "Я не обрабатываю слова просто так😕\n"
         "Чтобы начать игру, введи /play."
@@ -300,6 +299,7 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # запомним текущее состояние
     context.user_data["feedback_state"] = FEEDBACK_CHOOSE
+    context.user_data["in_feedback"] = True
     return FEEDBACK_CHOOSE
 
 
@@ -351,6 +351,7 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
             resp = "Спасибо, добавил в предложения для белого списка."
 
     await update.message.reply_text(resp)
+    context.user_data.pop("in_feedback", None)
     return ConversationHandler.END
 
 
@@ -365,6 +366,7 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
+    context.user_data.pop("in_feedback", None)
     return ConversationHandler.END
 
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -800,6 +802,7 @@ def main():
         ],
     },
     fallbacks=[CommandHandler("cancel", feedback_cancel)],
+    allow_reentry=True
     )
     
     app.add_handler(feedback_conv)
