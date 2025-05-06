@@ -29,12 +29,6 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
-          echo "=== Generate .env ==="
-          cat > .env <<EOF
-          BOT_TOKEN=${{ secrets.BOT_TOKEN }}
-          ADMIN_ID=${{ secrets.ADMIN_ID }}
-          EOF
-
           echo "=== Remove old container ==="
           docker rm -f wordly-bot || true
 
