@@ -268,7 +268,7 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("game_active"):
         return
     # 2) или в процессе фидбека
-    if context.user_data.get("feedback_state"):
+    if context.user_data.get("feedback_mode"):
         return
 
     # иначе — сообщение вне игры и не диалога фидбека
@@ -295,6 +295,8 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
+    context.user_data["feedback_mode"] = True
+
     # предлагаем выбрать список
     keyboard = [
         ["Чёрный список", "Белый список"],
@@ -309,7 +311,7 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("feedback_state", None)
+    context.user_data.pop("feedback_mode", None)
     text = update.message.text.strip()
     if text == "Отмена":
         await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
@@ -331,7 +333,7 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("feedback_state", None)
+    context.user_data.pop("feedback_mode", None)
     word = update.message.text.strip().lower()
     target = context.user_data["fb_target"]
 
@@ -372,7 +374,7 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("feedback_state", None)
+    context.user_data.pop("feedback_mode", None)
     await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
