@@ -266,6 +266,8 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # если сейчас в игре или в фидбеке — молчим
     if context.user_data.get("game_active") or context.user_data.get("in_feedback"):
         return
+    if context.user_data.pop("just_feedback_done", False):
+        return
     await update.message.reply_text(
         "Я не обрабатываю слова просто так😕\n"
         "Чтобы начать игру, введи /play."
@@ -352,6 +354,7 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(resp)
     context.user_data.pop("in_feedback", None)
+    context.user_data["just_feedback_done"] = True
     return ConversationHandler.END
 
 
@@ -365,8 +368,8 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     context.user_data.pop("in_feedback", None)
+    await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
