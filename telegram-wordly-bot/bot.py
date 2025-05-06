@@ -268,7 +268,7 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("game_active"):
         return
     # 2) или в процессе фидбека
-    if context.user_data.get("feedback_state") is not None:
+    if context.user_data.get("feedback_state"):
         return
 
     # иначе — сообщение вне игры и не диалога фидбека
