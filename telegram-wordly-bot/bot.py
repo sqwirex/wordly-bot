@@ -311,7 +311,6 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("feedback_mode", None)
     text = update.message.text.strip()
     if text == "Отмена":
         await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
@@ -333,7 +332,6 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("feedback_mode", None)
     word = update.message.text.strip().lower()
     target = context.user_data["fb_target"]
 
@@ -361,6 +359,7 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
             resp = "Спасибо, добавил в предложения для белого списка."
 
     await update.message.reply_text(resp)
+    context.user_data.pop("feedback_mode", None)
     return ConversationHandler.END
 
 
@@ -374,8 +373,8 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("feedback_mode", None)
     await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
+    context.user_data.pop("feedback_mode", None)
     return ConversationHandler.END
 
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
