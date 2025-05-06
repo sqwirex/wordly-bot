@@ -265,6 +265,29 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 
 # --- Обработчики команд ---
 
+async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Раз в 1 секунду после старта отправляем всем пользователям с current_game
+    напоминание продолжить игру.
+    """
+    store = load_store()
+    for uid, udata in store["users"].items():
+        if "current_game" in udata:
+            cg = udata["current_game"]
+            length = len(cg["secret"])
+            attempts = cg["attempts"]
+            try:
+                await context.bot.send_message(
+                    chat_id=int(uid),
+                    text=(
+                        f"⏳ У вас есть незавершённая игра:\n"
+                        f"{length}-буквенное слово, вы на попытке {attempts}.\n"
+                        "Пожалуйста, введите следующую догадку."
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Не смогли напомнить {uid}: {e}")
+
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # только админ
     context.user_data["in_broadcast"] = True
@@ -901,6 +924,7 @@ def main():
 	
     # send once immediately on launch
     app.job_queue.run_once(send_activity_periodic, when=0)
+    app.job_queue.run_once(send_unfinished_games, when=1)
 
     feedback_conv = ConversationHandler(
     entry_points=[CommandHandler("feedback", feedback_start)],
