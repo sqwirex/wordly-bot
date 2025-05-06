@@ -268,7 +268,15 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = store["users"].get(str(update.effective_user.id), {})
     if "current_game" in u:
         await update.message.reply_text(
-            "Нельзя отправлять фидбек во время игры.", reply_markup=ReplyKeyboardRemove()
+            "Нельзя отправлять фидбек пока идёт игра. Сначала закончи играть или нажми /reset.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return ConversationHandler.END
+    
+    if context.user_data.get("game_active"):
+        await update.message.reply_text(
+            "Нельзя отправлять фидбек пока идёт игра. Сначала закончи играть или нажми /reset.",
+            reply_markup=ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
@@ -442,6 +450,7 @@ async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
 
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
+    context.user_data["game_active"] = True
     store = load_store()
     u = store["users"].get(str(update.effective_user.id), {})
     if "current_game" in u:
