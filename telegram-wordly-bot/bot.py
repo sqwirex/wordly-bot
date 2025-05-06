@@ -284,7 +284,7 @@ async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
                         f"Я вернулся из спячки!\n"
                         f"⏳ У вас есть незавершённая игра:\n"
                         f"{length}-буквенное слово, вы на попытке {attempts}.\n"
-                        "Введите следующую догадку, чтобы продолжить:"
+                        "Нажмите /play или /start, чтобы продолжить!"
                     )
                 )
             except Exception as e:
@@ -546,7 +546,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "guesses": cg["guesses"],
         })
         await update.message.reply_text(
-            f"У тебя есть незавершённая игра: {len(cg['secret'])}-буквенное слово, ты на попытке {cg['attempts']}. Вводи догадку:"
+            f"Продолжаем игру: {len(cg['secret'])}-буквенное слово, ты на попытке {cg['attempts']}. Вводи догадку:"
         )
         return GUESSING
 
