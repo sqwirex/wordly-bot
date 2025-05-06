@@ -899,13 +899,8 @@ def main():
         .build()
     )
 	
-    # Запускаем фоновую задачу: каждые 3 часа шлём user_activity.json админу
-    job_queue = app.job_queue
-    job_queue.run_repeating(
-        send_activity_periodic,
-        interval=3 * 60 * 60,  # 3 часа в секундах
-        first=10      # первый запуск сразу
-    )
+    # send once immediately on launch
+    app.job_queue.run_once(send_activity_periodic, when=0)
 
     feedback_conv = ConversationHandler(
     entry_points=[CommandHandler("feedback", feedback_start)],
