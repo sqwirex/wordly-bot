@@ -67,6 +67,12 @@ async def set_commands(app):
         scope=BotCommandScopeChat(chat_id=ADMIN_ID)
     )
 
+KNOWN_CMD = [
+    "start", "play", "reset", "my_letters",
+    "my_stats", "global_stats", "feedback",
+    "dump_activity", "cancel", "suggestions_view", "suggestions_remove"
+]
+
 def load_suggestions() -> dict:
     if not SUGGESTIONS_FILE.exists():
         return {"black": [], "white": []}
@@ -953,8 +959,12 @@ def main():
         )
     
     app.add_handler(
-    MessageHandler(filters.COMMAND, unknown_command),
-    group=100  # любое большое число, чтобы этот хендлер был последним
+    MessageHandler(
+        filters.COMMAND
+        & ~filters.Command(KNOWN_CMD),
+        unknown_command
+    ),
+    group=100
     )
 
     # Глобальные
