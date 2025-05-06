@@ -263,12 +263,6 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
 
 # --- Обработчики команд ---
 
-async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Неизвестная команда. Чтобы начать игру, нажмите /play, "
-        "а чтобы посмотреть список доступных — /start."
-    )
-    
 async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # только админ
     if update.effective_user.id != ADMIN_ID:
@@ -952,6 +946,12 @@ def main():
     group=99
     )
 
+    async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            "Неизвестная команда. Чтобы начать игру, нажмите /play, "
+            "для списка команд — /start."
+        )
+    
     app.add_handler(
     MessageHandler(filters.COMMAND, unknown_command),
     group=100  # любое большое число, чтобы этот хендлер был последним
