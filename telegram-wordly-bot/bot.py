@@ -193,7 +193,7 @@ ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= r
 morph = pymorphy2.MorphAnalyzer(lang="ru")
 
 # частотный порог (регулируется по вкусу от 0 до 7)
-ZIPF_THRESHOLD = 3
+ZIPF_THRESHOLD = 2.5
 
 BLACK_LIST = set(vocabulary.get("black_list", []))
 WHITE_LIST = set(vocabulary.get("white_list", []))
