@@ -338,8 +338,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     
     await update.message.reply_text(
-        "Привет! Я Wordly Bot — угадай слово за 6 попыток.\n"
-        "https://github.com/sqwirex/wordly-bot - ссылка на репозиторий с кодом бота\n\n"
+        "Привет! Я Wordle Bot — угадай слово за 6 попыток.\n"
+        "https://github.com/sqwirex/wordle-bot - ссылка на репозиторий с кодом бота\n\n"
         "/play — начать или продолжить игру\n"
         "/my_letters — показать статус букв во время игры\n"
         "/hint — дает случайное слово в подсказку, если вы не можете придумать свое\n"
