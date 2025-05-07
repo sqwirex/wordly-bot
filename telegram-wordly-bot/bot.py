@@ -466,14 +466,12 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Обновляем пользовательскую статистику
         user_entry["stats"]["games_played"] += 1
         user_entry["stats"]["wins"] += 1
-        wp = user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
-        user_entry["stats"]["win_rate"] = round(wp, 2)
+        user_entry["stats"]["win_rate"] = user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
 
         # Обновляем глобальную статистику
         store["global"]["total_games"]   = store["global"].get("total_games", 0) + 1
         store["global"]["total_wins"]    = store["global"].get("total_wins", 0) + 1
-        gr = store["global"]["total_wins"] / store["global"]["total_games"]
-        store["global"]["win_rate"]      = round(gr, 2)
+        store["global"]["win_rate"] = store["global"]["total_wins"] / store["global"]["total_games"]
 
         top_uid, top_data = max(
             store["users"].items(),
@@ -502,14 +500,12 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cg["attempts"] >= 6:
         user_entry["stats"]["games_played"] += 1
         user_entry["stats"]["losses"] += 1
-        wp = user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
-        user_entry["stats"]["win_rate"] = round(wp, 2)
+        user_entry["stats"]["win_rate"] = user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
 
         store["global"]["total_games"]   = store["global"].get("total_games", 0) + 1
         store["global"]["total_losses"]  = store["global"].get("total_losses", 0) + 1
         if store["global"]["total_games"]:
-            gr = store["global"]["total_wins"] / store["global"]["total_games"]
-            store["global"]["win_rate"] = round(gr, 2)
+            store["global"]["win_rate"] = round(gr, 2) = store["global"]["total_wins"] / store["global"]["total_games"]
 
         await update.message.reply_text(
             f"💔 Попытки закончились. Было слово «{secret}».\n"
@@ -628,7 +624,7 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎲 Всего игр: {s.get('games_played',0)}\n"
         f"🏆 Побед: {s.get('wins',0)}\n"
         f"💔 Поражений: {s.get('losses',0)}\n"
-        f"📊 Процент: {s.get('win_rate',0.0)*100:.4f}%"
+        f"📊 Процент: {s.get('win_rate',0.0)*100:.2f}%"
         "```",
         parse_mode="Markdown"
     )
@@ -658,7 +654,7 @@ async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎲 Всего игр: {g['total_games']}\n"
         f"🏆 Побед: {g['total_wins']}\n"
         f"💔 Поражений: {g['total_losses']}\n"
-        f"📊 Процент: {g['win_rate']*100:.4f}%\n\n"
+        f"📊 Процент: {g['win_rate']*100:.2f}%\n\n"
         f"{top_line}"
         "```",
         parse_mode="Markdown"
