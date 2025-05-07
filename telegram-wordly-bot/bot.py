@@ -1,18 +1,19 @@
 import os
 import logging
 import random
-import pymorphy2
 import json
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
-from telegram import InputFile
 from io import BytesIO
 
 from telegram import (
     Update,
     ReplyKeyboardMarkup,
-    ReplyKeyboardRemove
+    ReplyKeyboardRemove,
+    BotCommand,
+    BotCommandScopeChat,
+    InputFile
 )
 from telegram.ext import (
     ApplicationBuilder,
@@ -22,10 +23,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from wordfreq import iter_wordlist, zipf_frequency
 from dotenv import load_dotenv
-
-from telegram import BotCommand, BotCommandScopeChat
 
 # Загрузка .env
 load_dotenv()
@@ -39,11 +37,9 @@ logger = logging.getLogger(__name__)
 
 # Файл для активности пользователей
 USER_FILE = Path("user_activity.json")
-VOCAB_FILE = Path("vocabulary.json")
-with VOCAB_FILE.open("r", encoding="utf-8") as f:
-    vocabulary = json.load(f)
 # файл для предложений пользователей
 SUGGESTIONS_FILE = Path("suggestions.json")
+# админ айди
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 async def set_commands(app):
@@ -189,30 +185,23 @@ def update_user_activity(user) -> None:
 # --- Константы и словарь ---
 ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= range(6)
 
-# инициализация морфоанализатора
-morph = pymorphy2.MorphAnalyzer(lang="ru")
-
-# частотный порог (регулируется по вкусу от 0 до 7)
-ZIPF_THRESHOLD = 2.5
-
+VOCAB_FILE = Path("vocabulary.json")
+with VOCAB_FILE.open("r", encoding="utf-8") as f:
+    vocabulary = json.load(f)
 BLACK_LIST = set(vocabulary.get("black_list", []))
 WHITE_LIST = set(vocabulary.get("white_list", []))
-
-_base = {
-    w
-    for w in iter_wordlist("ru", wordlist="large")
+BASE_FILE = Path("base_words.json")
+with BASE_FILE.open("r", encoding="utf-8") as f:
+    BASE_WORDS = set(json.load(f))
+# Объединяем с белым списком, чтобы эти слова гарантированно присутствовали
+WORDLIST = sorted(
+    w for w in (BASE_WORDS | WHITE_LIST)
     if (
         w.isalpha()
         and 4 <= len(w) <= 11
         and w not in BLACK_LIST
-        and zipf_frequency(w, "ru") >= ZIPF_THRESHOLD
     )
-    for p in [morph.parse(w)[0]]
-    if p.tag.POS == "NOUN" and p.normal_form == w
-}
-
-# Объединяем с белым списком, чтобы эти слова гарантированно присутствовали
-WORDLIST = sorted(_base | {w for w in WHITE_LIST if 4 <= len(w) <= 11})
+)
 
 GREEN, YELLOW, RED, UNK = "🟩", "🟨", "🟥", "⬜"
 
