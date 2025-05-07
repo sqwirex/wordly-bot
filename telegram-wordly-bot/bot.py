@@ -628,7 +628,7 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎲 Всего игр: {s.get('games_played',0)}\n"
         f"🏆 Побед: {s.get('wins',0)}\n"
         f"💔 Поражений: {s.get('losses',0)}\n"
-        f"📊 Процент: {s.get('win_rate',0.0)*100:.2f}%"
+        f"📊 Процент: {s.get('win_rate',0.0)*100:.4f}%"
         "```",
         parse_mode="Markdown"
     )
@@ -658,7 +658,7 @@ async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎲 Всего игр: {g['total_games']}\n"
         f"🏆 Побед: {g['total_wins']}\n"
         f"💔 Поражений: {g['total_losses']}\n"
-        f"📊 Процент: {g['win_rate']*100:.2f}%\n\n"
+        f"📊 Процент: {g['win_rate']*100:.4f}%\n\n"
         f"{top_line}"
         "```",
         parse_mode="Markdown"
