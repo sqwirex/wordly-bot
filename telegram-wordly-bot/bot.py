@@ -185,6 +185,17 @@ def update_user_activity(user) -> None:
 # --- Константы и словарь ---
 ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= range(6)
 
+HINT_THRESHOLD = {
+    4: 1,
+    5: 2,
+    6: 2,
+    7: 3,
+    8: 3,
+    9: 4,
+    10:4,
+    11:5,
+}
+
 VOCAB_FILE = Path("vocabulary.json")
 with VOCAB_FILE.open("r", encoding="utf-8") as f:
     vocabulary = json.load(f)
@@ -342,7 +353,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "https://github.com/sqwirex/wordle-bot - ссылка на репозиторий с кодом бота\n\n"
         "/play — начать или продолжить игру\n"
         "/my_letters — показать статус букв во время игры\n"
-        "/hint — дает случайное слово в подсказку, если вы не можете придумать свое\n"
+        "/hint — дает слово в подсказку, если вы затрудняетесь ответить\n"
         "/reset — сбросить текущую игру\n"
         "/my_stats — посмотреть свою статистику\n"
         "/global_stats — посмотреть глобальную статистику за все время\n"
@@ -580,27 +591,48 @@ async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выдаёт случайное слово‑подсказку той же длины, что и secret, но не secret."""
+    """Выдаёт разовую подсказку: слово той же длины, 
+       не secret, и имеющее с secret ≥N общих букв."""
     user_id = str(update.effective_user.id)
     store = load_store()
     user = store["users"].get(user_id, {})
 
-    # проверяем, есть ли активная игра
+    # 1) проверяем, есть ли активная игра
     if "current_game" not in user:
         await update.message.reply_text("Эту команду можно использовать только во время игры.")
-        return ConversationHandler.END
+        return GUESSING
+
+    # 2) проверяем, не брали ли уже подсказку
+    if context.user_data.get("hint_used"):
+        await update.message.reply_text("Подсказка уже использована в этой игре.")
+        return GUESSING
 
     secret = user["current_game"]["secret"]
     length = len(secret)
+    # сколько общих букв нужно
+    needed = HINT_THRESHOLD.get(length, 1)
 
-    # готовим список кандидатных подсказок
-    candidates = [w for w in WORDLIST if len(w) == length and w != secret]
+    # считаем буквы в secret
+    secret_set = set(secret)
+
+    # готовим кандидатов
+    candidates = [
+        w for w in WORDLIST
+        if len(w) == length
+           and w != secret
+           and len(set(w) & secret_set) >= needed
+    ]
+
     if not candidates:
-        await update.message.reply_text("К сожалению, подсказок нет.")
+        await update.message.reply_text("К сожалению, подходящей подсказки нет.")
         return GUESSING
 
-    word = random.choice(candidates)
-    await update.message.reply_text(f"🔍 Подсказка: {word}")
+    # выбираем случайно и выдаём
+    tip = random.choice(candidates)
+    await update.message.reply_text(f"🔍 Подсказка: {tip}")
+
+    # отмечаем, что подсказка взята
+    context.user_data["hint_used"] = True
     return GUESSING
 
 
@@ -622,7 +654,6 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_store(store)
 
     context.user_data.clear()
-    context.user_data.pop("game_active", None)
     await update.message.reply_text("Прогресс сброшен. Жду /play для новой игры.")
     return ConversationHandler.END
 
