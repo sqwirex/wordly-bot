@@ -505,7 +505,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         store["global"]["total_games"]   = store["global"].get("total_games", 0) + 1
         store["global"]["total_losses"]  = store["global"].get("total_losses", 0) + 1
         if store["global"]["total_games"]:
-            store["global"]["win_rate"] = round(gr, 2) = store["global"]["total_wins"] / store["global"]["total_games"]
+            store["global"]["win_rate"] = store["global"]["total_wins"] / store["global"]["total_games"]
 
         await update.message.reply_text(
             f"💔 Попытки закончились. Было слово «{secret}».\n"
