@@ -185,17 +185,6 @@ def update_user_activity(user) -> None:
 # --- Константы и словарь ---
 ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= range(6)
 
-HINT_THRESHOLD = {
-    4: 1,
-    5: 2,
-    6: 2,
-    7: 3,
-    8: 3,
-    9: 4,
-    10:4,
-    11:5,
-}
-
 VOCAB_FILE = Path("vocabulary.json")
 with VOCAB_FILE.open("r", encoding="utf-8") as f:
     vocabulary = json.load(f)
@@ -591,48 +580,50 @@ async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Выдаёт разовую подсказку: слово той же длины, 
-       не secret, и имеющее с secret ≥N общих букв."""
     user_id = str(update.effective_user.id)
     store = load_store()
-    user = store["users"].get(user_id, {})
+    user_entry = store["users"].setdefault(user_id, {
+        "stats": {"games_played": 0, "wins": 0, "losses": 0}
+    })
 
-    # 1) проверяем, есть ли активная игра
-    if "current_game" not in user:
+    # проверяем, есть ли активная игра
+    if "current_game" not in user_entry:
         await update.message.reply_text("Эту команду можно использовать только во время игры.")
-        return GUESSING
+        return ConversationHandler.END
 
-    # 2) проверяем, не брали ли уже подсказку
-    if context.user_data.get("hint_used"):
+    cg = user_entry["current_game"]
+
+    # если подсказка уже взята — не даём ещё одну
+    if cg.get("hint_used", False):
         await update.message.reply_text("Подсказка уже использована в этой игре.")
         return GUESSING
 
-    secret = user["current_game"]["secret"]
+    secret = cg["secret"]
     length = len(secret)
-    # сколько общих букв нужно
-    needed = HINT_THRESHOLD.get(length, 1)
 
-    # считаем буквы в secret
-    secret_set = set(secret)
+    # рассчитываем, сколько букв подсказать
+    # для длины n считаем подсказку из floor((n-2)/2) букв, например:
+    hint_counts = {4:1, 5:2, 6:2, 7:3, 8:3, 9:4, 10:4, 11:5}
+    num_letters = hint_counts.get(length, 1)
 
-    # готовим кандидатов
+    # собираем кандидатов, у которых есть хотя бы num_letters совпадающих букв
     candidates = [
         w for w in WORDLIST
-        if len(w) == length
-           and w != secret
-           and len(set(w) & secret_set) == needed
+        if len(w) == length and w != secret
+        and sum(1 for a, b in zip(w, secret) if a == b) == num_letters
     ]
 
     if not candidates:
-        await update.message.reply_text("К сожалению, подходящей подсказки нет.")
+        await update.message.reply_text("К сожалению, подходящих подсказок нет.")
         return GUESSING
 
-    # выбираем случайно и выдаём
-    tip = random.choice(candidates)
-    await update.message.reply_text(f"🔍 Подсказка: {tip}")
+    hint_word = random.choice(candidates)
 
-    # отмечаем, что подсказка взята
-    context.user_data["hint_used"] = True
+    # отмечаем в JSON, что подсказка взята
+    cg["hint_used"] = True
+    save_store(store)
+
+    await update.message.reply_text(f"🔍 Подсказка: {hint_word}")
     return GUESSING
 
 
