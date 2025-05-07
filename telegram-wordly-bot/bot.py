@@ -351,6 +351,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "https://github.com/sqwirex/wordly-bot - ссылка на репозиторий с кодом бота\n\n"
         "/play — начать или продолжить игру\n"
         "/my_letters — показать статус букв во время игры\n"
+        "/hint — дает случайное слово в подсказку, если вы не можете придумать свое\n"
         "/reset — сбросить текущую игру\n"
         "/my_stats — посмотреть свою статистику\n"
         "/global_stats — посмотреть глобальную статистику за все время\n"
@@ -1060,6 +1061,7 @@ def main():
     # Глобальные
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("my_letters", my_letters_not_allowed))
+    app.add_handler(CommandHandler("hint", hint_not_allowed))
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("my_stats", my_stats))
     app.add_handler(CommandHandler("global_stats", global_stats))
