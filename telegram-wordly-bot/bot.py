@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
 from telegram import InputFile
+from io import BytesIO
 
 from telegram import (
     Update,
@@ -57,6 +58,7 @@ async def set_commands(app):
             BotCommand("my_stats",      "Ваша статистика"),
             BotCommand("global_stats",  "Глобальная статистика"),
             BotCommand("feedback", "Жалоба на слово"),
+            BotCommand("dict_file",  "Посмотреть словарь"),
             BotCommand("dump_activity", "Скачать user_activity.json"),
             BotCommand("suggestions_view", "Посмотреть фидбек юзеров"),
             BotCommand("suggestions_remove", "Удалить что-то из фидбека"),
@@ -818,6 +820,26 @@ async def feedback_not_allowed_guess(update: Update, context: ContextTypes.DEFAU
     return GUESSING
 
 
+async def dict_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Только админу
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    # Собираем весь WORDLIST в единую строку
+    data = "\n".join(WORDLIST)
+    count = len(WORDLIST)
+
+    # Упаковываем в BytesIO, задаём имя файла
+    bio = BytesIO(data.encode("utf-8"))
+    bio.name = "wordlist.txt"
+
+    # Отправляем как документ
+    await update.message.reply_document(
+        document=bio,
+        filename="wordlist.txt",
+        caption=f"📚 В словаре {count} слов"
+    )
+
 
 async def dump_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -1065,6 +1087,7 @@ def main():
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("my_stats", my_stats))
     app.add_handler(CommandHandler("global_stats", global_stats))
+    app.add_handler(CommandHandler("dict_file", dict_file))
     app.add_handler(CommandHandler("dump_activity", dump_activity))
 
     store = load_store()
