@@ -620,7 +620,7 @@ async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
         w for w in WORDLIST
         if len(w) == length
            and w != secret
-           and len(set(w) & secret_set) >= needed
+           and len(set(w) & secret_set) == needed
     ]
 
     if not candidates:
