@@ -31,11 +31,11 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
-          echo "=== Remove old container ==="
-          docker rm -f wordly-bot || true
-
           echo "=== Build new image ==="
           docker build -t wordly-bot .
+
+          echo "=== Remove old container ==="
+          docker rm -f wordly-bot || true
 
           echo "=== Run container ==="
           docker run -d \
