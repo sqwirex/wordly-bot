@@ -37,6 +37,9 @@ jobs:
           echo "=== Remove old container ==="
           docker rm -f wordly-bot || true
 
+          echo "=== Prune dangling images ==="
+          docker image prune -f
+
           echo "=== Run container ==="
           docker run -d \
             --name wordly-bot \
