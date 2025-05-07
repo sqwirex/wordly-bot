@@ -804,11 +804,17 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_suggestions(suggestions)
             resp = "Спасибо, добавил в предложения для чёрного списка."
     else:  # white
-        if word in WORDLIST and not(4 <= len(word) <= 11):
+        # Сначала проверяем длину
+        if not (4 <= len(word) <= 11):
+            resp = "Нельзя: длина слова должна быть от 4 до 11 символов."
+        # Потом — что слово уже есть в основном словаре
+        elif word in WORDLIST:
             resp = "Нельзя: такое слово уже есть в основном словаре."
+        # Потом — что его уже предлагали
         elif word in vocabulary.get("white_list", []) or word in suggestions["white"]:
             resp = "Нельзя: слово уже в белом списке."
         else:
+            # Всё ок — добавляем
             suggestions["white"].append(word)
             save_suggestions(suggestions)
             resp = "Спасибо, добавил в предложения для белого списка."
