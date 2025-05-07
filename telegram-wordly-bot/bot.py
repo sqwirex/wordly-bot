@@ -782,6 +782,15 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = update.message.text.strip().lower()
     target = context.user_data["fb_target"]
 
+    if SUGGESTIONS_FILE.exists() and SUGGESTIONS_FILE.stat().st_size >= 1_000_000:
+        await update.message.reply_text(
+            "Прости, сейчас нельзя добавить новое слово — файл предложений уже слишком большой."
+        )
+        # Сбрасываем режим фидбека
+        context.user_data.pop("in_feedback", None)
+        context.user_data["just_done"] = True
+        return ConversationHandler.END
+    
     # подтянем свежие предложения
     suggestions = load_suggestions()
 
@@ -789,16 +798,16 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if word not in WORDLIST:
             resp = "Нельзя: такого слова нет в основном словаре."
         elif word in vocabulary.get("black_list", []) or word in suggestions["black"]:
-            resp = "Нельзя: слово уже в чёрном списке или вы его уже предлагали."
+            resp = "Нельзя: слово уже в чёрном списке."
         else:
             suggestions["black"].append(word)
             save_suggestions(suggestions)
             resp = "Спасибо, добавил в предложения для чёрного списка."
     else:  # white
-        if word in WORDLIST:
+        if word in WORDLIST and 4 <= len(word) <= 11:
             resp = "Нельзя: такое слово уже есть в основном словаре."
         elif word in vocabulary.get("white_list", []) or word in suggestions["white"]:
-            resp = "Нельзя: слово уже в белом списке или вы его уже предлагали."
+            resp = "Нельзя: слово уже в белом списке."
         else:
             suggestions["white"].append(word)
             save_suggestions(suggestions)
