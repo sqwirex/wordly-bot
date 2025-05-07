@@ -51,8 +51,9 @@ async def set_commands(app):
         [
             BotCommand("start",         "Показать приветствие"),
             BotCommand("play",          "Начать новую игру"),
-            BotCommand("reset",         "Сбросить игру"),
             BotCommand("my_letters",    "Статус букв в игре"),
+            BotCommand("hint",    "Подсказка"),
+            BotCommand("reset",         "Сбросить игру"),
             BotCommand("my_stats",      "Ваша статистика"),
             BotCommand("global_stats",  "Глобальная статистика"),
             BotCommand("feedback", "Жалоба на слово"),
@@ -281,7 +282,6 @@ async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         # Слишком длинное — отправляем как файл
-        from telegram import InputFile
         with activity_path.open("rb") as f:
             await context.bot.send_document(
                 chat_id=ADMIN_ID,
@@ -533,27 +533,6 @@ async def ignore_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GUESSING
 
 
-async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    update_user_activity(update.effective_user)
-
-    store = load_store()
-    uid = str(update.effective_user.id)
-    user = store["users"].get(uid)
-    if user and "current_game" in user:
-        del user["current_game"]
-        save_store(store)
-
-    context.user_data.clear()
-    context.user_data.pop("game_active", None)
-    await update.message.reply_text("Прогресс сброшен. Жду /play для новой игры.")
-    return ConversationHandler.END
-
-
-async def reset_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    update_user_activity(update.effective_user)
-    await update.message.reply_text("Сейчас нечего сбрасывать — начните игру: /play")
-
-
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем профиль пользователя
     update_user_activity(update.effective_user)
@@ -606,6 +585,59 @@ async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_T
         # если вообще ни в одном ConversationHandler-е
         await update.message.reply_text("Эту команду можно использовать только во время игры.")
         return ConversationHandler.END
+
+
+async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выдаёт случайное слово‑подсказку той же длины, что и secret, но не secret."""
+    user_id = str(update.effective_user.id)
+    store = load_store()
+    user = store["users"].get(user_id, {})
+
+    # проверяем, есть ли активная игра
+    if "current_game" not in user:
+        await update.message.reply_text("Эту команду можно использовать только во время игры.")
+        return ConversationHandler.END
+
+    secret = user["current_game"]["secret"]
+    length = len(secret)
+
+    # готовим список кандидатных подсказок
+    candidates = [w for w in WORDLIST if len(w) == length and w != secret]
+    if not candidates:
+        await update.message.reply_text("К сожалению, подсказок нет.")
+        return GUESSING
+
+    word = random.choice(candidates)
+    await update.message.reply_text(f"🔍 Подсказка: {word}")
+    return GUESSING
+
+
+async def hint_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сообщение, если /hint вызвали не во время игры."""
+    await update.message.reply_text("Эту команду можно использовать только во время игры.")
+    # если сейчас выбираем длину — останемся в ASK_LENGTH, иначе в GUESSING
+    return context.user_data.get("state", ASK_LENGTH)
+
+
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_user_activity(update.effective_user)
+
+    store = load_store()
+    uid = str(update.effective_user.id)
+    user = store["users"].get(uid)
+    if user and "current_game" in user:
+        del user["current_game"]
+        save_store(store)
+
+    context.user_data.clear()
+    context.user_data.pop("game_active", None)
+    await update.message.reply_text("Прогресс сброшен. Жду /play для новой игры.")
+    return ConversationHandler.END
+
+
+async def reset_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update_user_activity(update.effective_user)
+    await update.message.reply_text("Сейчас нечего сбрасывать — начните игру: /play")
 
 
 async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -968,8 +1000,9 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_length),
                 CommandHandler("start", ignore_ask),
                 CommandHandler("play", ignore_ask),
+		        CommandHandler("my_letters", my_letters_not_allowed),
+                CommandHandler("hint", hint_not_allowed),
                 CommandHandler("reset", reset),
-		CommandHandler("my_letters", my_letters_not_allowed),
                 CommandHandler("my_stats", only_outside_game),
                 CommandHandler("global_stats", only_outside_game),
             ],
@@ -977,9 +1010,10 @@ def main():
                 CommandHandler("feedback", feedback_not_allowed_guess),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
                 CommandHandler("start", ignore_guess),
-		CommandHandler("play", ignore_guess),
+		        CommandHandler("play", ignore_guess),
+		        CommandHandler("my_letters", my_letters),
+                CommandHandler("hint", hint),
                 CommandHandler("reset", reset),
-		CommandHandler("my_letters", my_letters),
                 CommandHandler("my_stats", only_outside_game),
                 CommandHandler("global_stats", only_outside_game),
             ],
@@ -1025,8 +1059,8 @@ def main():
 
     # Глобальные
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("my_letters", my_letters_not_allowed))
+    app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("my_stats", my_stats))
     app.add_handler(CommandHandler("global_stats", global_stats))
     app.add_handler(CommandHandler("dump_activity", dump_activity))
