@@ -250,17 +250,22 @@ def render_full_board_with_keyboard(
     board_w = cols * board_sq + total_pad
     board_h = total_rows * board_sq + (total_rows + 1) * padding
 
-    # выбор размера клавиш:
-    # если 8+ букв – клавиатура 60% от board_sq, иначе – 40%
+    # выбираем масштаб клавиш по длине слова
     if cols >= 8:
-        kb_sq = max(16, int(board_sq * 0.6))
-    else:
-        kb_sq = max(12, int(board_sq * 0.4))
+        factor = 0.6
+    elif cols == 7:
+        factor = 0.5
+    elif cols <= 5:
+        factor = 0.3
+    else:  # 6 букв
+        factor = 0.4
+
+    kb_sq   = max(12, int(board_sq * factor))
     kb_rows = len(KB_LAYOUT)
     img_h   = board_h + kb_rows * kb_sq + (kb_rows + 1) * padding
 
-    img  = Image.new("RGB", (board_w, img_h), (30, 30, 30))
-    draw = ImageDraw.Draw(img)
+    img        = Image.new("RGB", (board_w, img_h), (30, 30, 30))
+    draw       = ImageDraw.Draw(img)
     font_board = ImageFont.truetype("DejaVuSans-Bold.ttf", int(board_sq * 0.6))
     font_kb    = ImageFont.truetype("DejaVuSans-Bold.ttf", int(kb_sq * 0.6))
 
@@ -564,7 +569,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем время последнего визита
     user["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
 
-    # Проверяем, есть ли активная игра
+    # Проверяем активную игру
     if "current_game" not in user:
         await update.message.reply_text("Нет активной игры, начни /play")
         return ConversationHandler.END
@@ -584,11 +589,11 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # Рендерим доску из 6 строк + мини-клавиатуру,
-    # при length >= 8 используем крупную клавиатуру, иначе — уменьшенную
+    # Рендерим доску из 6 строк + мини-клавиатуру снизу.
+    # Клавиатура будет крупнее для слов ≥8 букв, чуть меньше для 7 и ещё меньше для 4–5.
     img_buf = render_full_board_with_keyboard(
-        cg["guesses"],
-        secret,
+        guesses=cg["guesses"],
+        secret=secret,
         total_rows=6,
         max_width_px=1080
     )
@@ -624,7 +629,6 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{'попытка' if cg['attempts']==1 else 'попытки' if 2<=cg['attempts']<=4 else 'попыток'}.\n"
             "Чтобы сыграть вновь, введи /play."
         )
-
         del user["current_game"]
         context.user_data.pop("game_active", None)
         context.user_data["just_done"] = True
@@ -647,7 +651,6 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💔 Попытки закончились. Было слово «{secret}».\n"
             "Чтобы начать новую игру, введи /play."
         )
-
         del user["current_game"]
         context.user_data.pop("game_active", None)
         context.user_data["just_done"] = True
