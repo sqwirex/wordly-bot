@@ -238,11 +238,7 @@ def render_full_board_with_keyboard(
     total_rows: int = 6,
     max_width_px: int = 1080
 ) -> BytesIO:
-    """
-    Рисует доску Wordle из total_rows строк + мини-клавиатуру снизу.
-    Параметры: padding=8, board_def=80, total_rows=6, max_width_px=1080.
-    """
-    padding   = 6      
+    padding   = 6
     board_def = 80
     cols      = len(secret)
     total_pad = (cols + 1) * padding
@@ -254,17 +250,21 @@ def render_full_board_with_keyboard(
     board_w = cols * board_sq + total_pad
     board_h = total_rows * board_sq + (total_rows + 1) * padding
 
-    # размер клавиши — 60% от board_sq, минимум 16px
-    kb_sq   = max(16, int(board_sq * 0.6))
+    # выбор размера клавиш:
+    # если 8+ букв – клавиатура 60% от board_sq, иначе – 40%
+    if cols >= 8:
+        kb_sq = max(16, int(board_sq * 0.6))
+    else:
+        kb_sq = max(12, int(board_sq * 0.4))
     kb_rows = len(KB_LAYOUT)
     img_h   = board_h + kb_rows * kb_sq + (kb_rows + 1) * padding
 
-    img        = Image.new("RGB", (board_w, img_h), (30, 30, 30))
-    draw       = ImageDraw.Draw(img)
+    img  = Image.new("RGB", (board_w, img_h), (30, 30, 30))
+    draw = ImageDraw.Draw(img)
     font_board = ImageFont.truetype("DejaVuSans-Bold.ttf", int(board_sq * 0.6))
     font_kb    = ImageFont.truetype("DejaVuSans-Bold.ttf", int(kb_sq * 0.6))
 
-    # --- игровая доска ---
+    # --- игровая доска (6 строк) ---
     for r in range(total_rows):
         y0 = padding + r * (board_sq + padding)
         if r < len(guesses):
@@ -297,7 +297,7 @@ def render_full_board_with_keyboard(
                 bbox = draw.textbbox((0,0), ch, font=font_board)
                 w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
                 draw.text(
-                    (x0 + (board_sq-w)/2, y0 + (board_sq-h)/2),
+                    (x0 + (board_sq - w)/2, y0 + (board_sq - h)/2),
                     ch, font=font_board, fill=tc
                 )
 
@@ -331,7 +331,7 @@ def render_full_board_with_keyboard(
             bbox   = draw.textbbox((0,0), letter, font=font_kb)
             w, h   = bbox[2]-bbox[0], bbox[3]-bbox[1]
             draw.text(
-                (x0 + (kb_sq-w)/2, y0 + (kb_sq-h)/2),
+                (x0 + (kb_sq - w)/2, y0 + (kb_sq - h)/2),
                 letter, font=font_kb, fill=tc
             )
 
@@ -584,8 +584,14 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # Рендерим доску из 8 строк + мини-клавиатуру
-    img_buf = render_full_board_with_keyboard(cg["guesses"], secret, total_rows=8, max_width_px=1080)
+    # Рендерим доску из 6 строк + мини-клавиатуру,
+    # при length >= 8 используем крупную клавиатуру, иначе — уменьшенную
+    img_buf = render_full_board_with_keyboard(
+        cg["guesses"],
+        secret,
+        total_rows=6,
+        max_width_px=1080
+    )
     await update.message.reply_photo(
         photo=InputFile(img_buf, filename="wordle_board.png"),
         caption=f"Попытка {cg['attempts']} из 6"
