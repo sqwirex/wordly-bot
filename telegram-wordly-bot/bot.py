@@ -189,47 +189,59 @@ def update_user_activity(user) -> None:
 
 
 def render_wordle_image(guesses: list[str], secret: str) -> BytesIO:
-    max_width_px = 360
-    padding      = 8
-    default_sq   = 80
+    # жёстко вписываем доску в 300px
+    max_width_px = 300
+    padding     = 6
+    default_sq  = 80
 
     cols      = len(secret)
     total_pad = (cols + 1) * padding
 
-    # Жёстко вписываем в max_width_px
-    square = min(default_sq, (max_width_px - total_pad)//cols)
+    # квадрат становится либо default, либо уменьшается,
+    # чтобы уместиться в max_width_px
+    square = min(default_sq, (max_width_px - total_pad) // cols)
     square = max(20, square)
 
     width  = cols * square + total_pad
     height = len(guesses) * square + (len(guesses) + 1) * padding
 
-    font = ImageFont.truetype("DejaVuSans-Bold.ttf", int(square*0.6))
+    font = ImageFont.truetype("DejaVuSans-Bold.ttf", int(square * 0.6))
 
-    img  = Image.new("RGB", (width, height), color=(30,30,30))
+    img  = Image.new("RGB", (width, height), (30,30,30))
     draw = ImageDraw.Draw(img)
 
     for r, guess in enumerate(guesses):
-        fb = make_feedback(secret, guess)
-        y0 = padding + r * (square + padding)
+        fb   = make_feedback(secret, guess)
+        y0   = padding + r * (square + padding)
         for c, ch in enumerate(guess):
             x0 = padding + c * (square + padding)
             x1, y1 = x0+square, y0+square
 
-            if   fb[c] == "🟩": bg = (106,170,100)
-            elif fb[c] == "🟨": bg = (201,180, 88)
-            else:               bg = (255,255,255)
+            # фон
+            if fb[c] == "🟩":
+                bg = (106,170,100)
+            elif fb[c] == "🟨":
+                bg = (201,180, 88)
+            else:
+                bg = (255,255,255)
 
             tc = (0,0,0) if bg==(255,255,255) else (255,255,255)
             draw.rectangle([x0,y0,x1,y1], fill=bg, outline=(0,0,0), width=2)
 
+            # текст
             bbox = draw.textbbox((0,0), ch.upper(), font=font)
             w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
             tx = x0 + (square - w)/2
             ty = y0 + (square - h)/2
             draw.text((tx, ty), ch.upper(), font=font, fill=tc)
 
+    # на всякий случай: если всё ещё шире – масштабируем
+    if img.width > max_width_px:
+        ratio = max_width_px / img.width
+        img = img.resize((int(img.width*ratio), int(img.height*ratio)), Image.LANCZOS)
+
     buf = BytesIO()
-    img.save(buf, format="PNG")
+    img.save(buf, "PNG")
     buf.seek(0)
     return buf
 
