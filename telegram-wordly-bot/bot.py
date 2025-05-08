@@ -242,7 +242,7 @@ def render_full_board_with_keyboard(
     Рисует доску Wordle из total_rows строк + мини-клавиатуру снизу.
     Параметры: padding=8, board_def=80, total_rows=6, max_width_px=1080.
     """
-    padding   = 8       # ← изменено на 8
+    padding   = 6      
     board_def = 80
     cols      = len(secret)
     total_pad = (cols + 1) * padding
