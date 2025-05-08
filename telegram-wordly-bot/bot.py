@@ -430,26 +430,18 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # Набор «широких» букв
-    special = {"Ш", "Ж", "Ы", "М", "Щ"}
-
-    # --- Собираем историю попыток в кодовый блок ---
-    history = []
+    # --- Собираем историю попыток в HTML, с жирными буквами и неразрывными пробелами ---
+    blocks: list[str] = []
     for g in cg["guesses"]:
-        fb_line = make_feedback(secret, g)
-        # формируем строку букв с условным количеством пробелов
-        letters = ""
-        for i, ch in enumerate(g):
-            ch_up = ch.upper()
-            # всегда 1 пробел перед первой буквой,
-            # для «special» — 1 пробел, иначе — 2 пробела
-            spaces = 1 if (i == 0 or ch_up in special) else 2
-            letters += " " * spaces + ch_up
-        history.append(fb_line)
-        history.append(letters)
+        fb_line = make_feedback(secret, g)  # 🟩🟨🟥…
+        # Делаем буквы жирными и разделяем двумя неразрывными пробелами,
+        # добавляем один NBSP в начале для выравнивания
+        parts = [f"<b>{ch.upper()}</b>" for ch in g]
+        letters_html = "&nbsp;" + "&nbsp;&nbsp;".join(parts)
+        blocks.append(f"{fb_line}\n{letters_html}")
 
-    code_block = "```\n" + "\n".join(history) + "\n```"
-    await update.message.reply_text(code_block, parse_mode="Markdown")
+    html = "\n\n".join(blocks)
+    await update.message.reply_text(html, parse_mode="HTML")
 
     # —— Победа ——
     if guess == secret:
@@ -463,7 +455,6 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         g["total_wins"] += 1
         g["win_rate"] = g["total_wins"] / g["total_games"]
 
-        # обновляем топ‑игрока
         top_uid, top_data = max(
             store["users"].items(),
             key=lambda kv: kv[1].get("stats", {}).get("wins", 0)
