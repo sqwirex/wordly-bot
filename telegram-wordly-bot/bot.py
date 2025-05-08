@@ -235,39 +235,41 @@ KB_LAYOUT = [
 def render_full_board_with_keyboard(
     guesses: list[str],
     secret: str,
-    total_rows: int = 6,
+    total_rows: int = 8,
     max_width_px: int = 1080
 ) -> BytesIO:
-    padding     = 8
-    board_def   = 80
-    cols        = len(secret)
-    total_pad   = (cols + 1) * padding
+    """
+    Рисует доску Wordle из total_rows строк + мини-клавиатуру снизу.
+    Параметры: padding=8, board_def=80, total_rows=8, max_width_px=1080.
+    """
+    padding   = 8       # ← изменено на 8
+    board_def = 80
+    cols      = len(secret)
+    total_pad = (cols + 1) * padding
 
-    # Размер квадратика доски
+    # размер квадратика доски
     board_sq = min(board_def, (max_width_px - total_pad) // cols)
     board_sq = max(20, board_sq)
 
-    board_w  = cols * board_sq + total_pad
-    board_h  = total_rows * board_sq + (total_rows + 1) * padding
+    board_w = cols * board_sq + total_pad
+    board_h = total_rows * board_sq + (total_rows + 1) * padding
 
-    # Квадратик клавиатуры (можно взять чуть меньше, но возьмём тот же)
-    kb_sq = board_sq
+    # размер клавиши — 60% от board_sq, минимум 16px
+    kb_sq   = max(16, int(board_sq * 0.6))
     kb_rows = len(KB_LAYOUT)
-    img_h = board_h + kb_rows * kb_sq + (kb_rows + 1) * padding
+    img_h   = board_h + kb_rows * kb_sq + (kb_rows + 1) * padding
 
-    # Шрифт
-    font = ImageFont.truetype("DejaVuSans-Bold.ttf", int(board_sq * 0.6))
+    img        = Image.new("RGB", (board_w, img_h), (30, 30, 30))
+    draw       = ImageDraw.Draw(img)
+    font_board = ImageFont.truetype("DejaVuSans-Bold.ttf", int(board_sq * 0.6))
+    font_kb    = ImageFont.truetype("DejaVuSans-Bold.ttf", int(kb_sq * 0.6))
 
-    img  = Image.new("RGB", (board_w, img_h), (30,30,30))
-    draw = ImageDraw.Draw(img)
-
-    # --- Рисуем доску ---
+    # --- игровая доска ---
     for r in range(total_rows):
         y0 = padding + r * (board_sq + padding)
-
         if r < len(guesses):
             guess = guesses[r]
-            fb    = make_feedback(secret, guess)  # 🟩🟨⬜
+            fb    = make_feedback(secret, guess)
         else:
             guess = None
             fb    = [None] * cols
@@ -277,44 +279,43 @@ def render_full_board_with_keyboard(
             x1 = x0 + board_sq
             y1 = y0 + board_sq
 
-            # цвет квадрата
-            if fb[c] == "🟩":
+            color = fb[c]
+            if color == GREEN:
                 bg = (106,170,100)
-            elif fb[c] == "🟨":
+            elif color == YELLOW:
                 bg = (201,180,88)
-            elif fb[c] == "⬜":
-                bg = (128,128,128)  # серый для неверных букв
+            elif color == WHITE:
+                bg = (128,128,128)
             else:
-                bg = (255,255,255)  # чистый белый
+                bg = (255,255,255)
 
             draw.rectangle([x0,y0,x1,y1], fill=bg, outline=(0,0,0), width=2)
 
-            # буква, если она есть
             if guess:
                 ch = guess[c].upper()
-                tc = (0,0,0) if bg==(255,255,255) else (255,255,255)
-                bbox = draw.textbbox((0,0), ch, font=font)
+                tc = (0,0,0) if bg == (255,255,255) else (255,255,255)
+                bbox = draw.textbbox((0,0), ch, font=font_board)
                 w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-                tx = x0 + (board_sq - w)/2
-                ty = y0 + (board_sq - h)/2
-                draw.text((tx,ty), ch, font=font, fill=tc)
+                draw.text(
+                    (x0 + (board_sq-w)/2, y0 + (board_sq-h)/2),
+                    ch, font=font_board, fill=tc
+                )
 
-    # --- Рисуем мини-клавиатуру ---
+    # --- мини-клавиатура ---
     letter_status = compute_letter_status(secret, guesses)
-    for row_idx, row in enumerate(KB_LAYOUT):
-        # динамический сдвиг по X, чтобы центрировать каждую строку
-        row_len     = len(row)
-        row_pad     = (row_len + 1) * padding
-        row_width   = row_len * kb_sq + row_pad
-        x_offset    = (board_w - row_width) // 2
-        y0          = board_h + padding + row_idx * (kb_sq + padding)
+    for ri, row in enumerate(KB_LAYOUT):
+        y0      = board_h + padding + ri * (kb_sq + padding)
+        row_len = len(row)
+        row_pad = (row_len + 1) * padding
+        row_w   = row_len * kb_sq + row_pad
+        x_off   = (board_w - row_w) // 2
 
         for i, ch in enumerate(row):
-            x0 = x_offset + padding + i * (kb_sq + padding)
+            x0 = x_off + padding + i * (kb_sq + padding)
             x1 = x0 + kb_sq
             y1 = y0 + kb_sq
 
-            st = letter_status.get(ch, None)
+            st = letter_status.get(ch)
             if st == "green":
                 bg = (106,170,100)
             elif st == "yellow":
@@ -325,14 +326,14 @@ def render_full_board_with_keyboard(
                 bg = (255,255,255)
 
             draw.rectangle([x0,y0,x1,y1], fill=bg, outline=(0,0,0), width=1)
-            tc = (0,0,0) if bg==(255,255,255) else (255,255,255)
-
+            tc = (0,0,0) if bg == (255,255,255) else (255,255,255)
             letter = ch.upper()
-            bbox = draw.textbbox((0,0), letter, font=font)
-            w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-            tx = x0 + (kb_sq - w)/2
-            ty = y0 + (kb_sq - h)/2
-            draw.text((tx,ty), letter, font=font, fill=tc)
+            bbox   = draw.textbbox((0,0), letter, font=font_kb)
+            w, h   = bbox[2]-bbox[0], bbox[3]-bbox[1]
+            draw.text(
+                (x0 + (kb_sq-w)/2, y0 + (kb_sq-h)/2),
+                letter, font=font_kb, fill=tc
+            )
 
     buf = BytesIO()
     img.save(buf, format="PNG")
@@ -583,8 +584,8 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # Рисуем всю доску из 6 строк + мини-клавиатуру снизу
-    img_buf = render_full_board_with_keyboard(cg["guesses"], secret, total_rows=6)
+    # Рендерим доску из 8 строк + мини-клавиатуру
+    img_buf = render_full_board_with_keyboard(cg["guesses"], secret, total_rows=8, max_width_px=1080)
     await update.message.reply_photo(
         photo=InputFile(img_buf, filename="wordle_board.png"),
         caption=f"Попытка {cg['attempts']} из 6"
