@@ -410,13 +410,13 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем last_seen
     user_entry["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
 
-    # Если нет активной игры — просим стартовать
+    # Проверяем, есть ли активная игра
     if "current_game" not in user_entry:
         await update.message.reply_text("Нет активной игры, начни /play")
         return ConversationHandler.END
 
-    cg = user_entry["current_game"]
-    guess = update.message.text.strip().lower()
+    cg     = user_entry["current_game"]
+    guess  = update.message.text.strip().lower()
     secret = cg["secret"]
     length = len(secret)
 
@@ -425,55 +425,45 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Введите существующее слово из {length} букв.")
         return GUESSING
 
-    # Сохраняем догадку
+    # Сохраняем ход
     cg["guesses"].append(guess)
     cg["attempts"] += 1
+    save_store(store)
 
-    special = {"Ш", "Ж", "Ы", "М", "Щ"}
+    # Собираем историю в кодовый блок (моноширинный шрифт)
+    history_lines = []
+    for g in cg["guesses"]:
+        fb_line = make_feedback(secret, g)                 # 🟩🟨🟥…
+        letters = " ".join(ch.upper() for ch in g)         # A B C D E
+        history_lines.append(fb_line)
+        history_lines.append(letters)
 
-    # --- собираем историю попыток с выравниванием ---
-    lines = []
-    for gw in cg["guesses"]:
-        fb = make_feedback(secret, gw)
-        parts = []
-        for i, ch in enumerate(gw):
-            ch_up = ch.upper()
-            if i == 0:
-                # в начале всегда один пробел перед любой буквой
-                prefix = " "
-            else:
-                # после первого: один пробел для special, два для остальных
-                prefix = " " if ch_up in special else "  "
-            parts.append(f"{prefix}**{ch_up}**")
-        spaced = "".join(parts)
-        lines.append(f"{fb}\n{spaced}")
+    code_block = "```\n" + "\n".join(history_lines) + "\n```"
+    await update.message.reply_text(code_block, parse_mode="Markdown")
 
-    text = "\n\n".join(lines)
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-    # ——— проверяем победу ———
+    # —— Победа ——
     if guess == secret:
-        user_entry["stats"]["games_played"] += 1
-        user_entry["stats"]["wins"] += 1
-        user_entry["stats"]["win_rate"] = (
-            user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
-        )
+        # Обновляем личную статистику
+        stats = user_entry["stats"]
+        stats["games_played"] += 1
+        stats["wins"] += 1
+        stats["win_rate"] = stats["wins"] / stats["games_played"]
 
-        store["global"]["total_games"] += 1
-        store["global"]["total_wins"] += 1
-        store["global"]["win_rate"] = (
-            store["global"]["total_wins"] / store["global"]["total_games"]
-        )
+        # Обновляем глобальную статистику
+        g = store["global"]
+        g["total_games"] += 1
+        g["total_wins"] += 1
+        g["win_rate"] = g["total_wins"] / g["total_games"]
 
-        # обновляем топ‑игрока
+        # Находим топ‑игрока
         top_uid, top_data = max(
             store["users"].items(),
             key=lambda kv: kv[1].get("stats", {}).get("wins", 0)
         )
         store["global"]["top_player"] = {
-            "user_id": top_uid,
+            "user_id":  top_uid,
             "username": top_data.get("username") or top_data.get("first_name", ""),
-            "wins": top_data["stats"]["wins"]
+            "wins":     top_data["stats"]["wins"]
         }
 
         await update.message.reply_text(
@@ -482,25 +472,24 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Чтобы сыграть вновь, введи команду /play."
         )
 
+        # Завершаем игру
         del user_entry["current_game"]
         context.user_data.pop("game_active", None)
         context.user_data["just_done"] = True
         save_store(store)
         return ConversationHandler.END
 
-    # ——— проверяем поражение ———
+    # —— Поражение ——
     if cg["attempts"] >= 6:
-        user_entry["stats"]["games_played"] += 1
-        user_entry["stats"]["losses"] += 1
-        user_entry["stats"]["win_rate"] = (
-            user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
-        )
+        stats = user_entry["stats"]
+        stats["games_played"] += 1
+        stats["losses"] += 1
+        stats["win_rate"] = stats["wins"] / stats["games_played"]
 
-        store["global"]["total_games"] += 1
-        store["global"]["total_losses"] += 1
-        store["global"]["win_rate"] = (
-            store["global"]["total_wins"] / store["global"]["total_games"]
-        )
+        g = store["global"]
+        g["total_games"] += 1
+        g["total_losses"] += 1
+        g["win_rate"] = g["total_wins"] / g["total_games"]
 
         await update.message.reply_text(
             f"💔 Попытки закончились. Было слово «{secret}».\n"
@@ -508,15 +497,13 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         del user_entry["current_game"]
-        context.user_data["just_done"] = True
         context.user_data.pop("game_active", None)
+        context.user_data["just_done"] = True
         save_store(store)
         return ConversationHandler.END
 
-    # Игра продолжается — сохраняем и ждём следующей догадки
-    save_store(store)
+    # Игра продолжается
     return GUESSING
-
 
 
 async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
