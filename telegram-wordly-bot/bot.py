@@ -429,19 +429,28 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["guesses"].append(guess)
     cg["attempts"] += 1
 
-    # --- собираем историю попыток в моноширинном блоке ---
+    # Специальные широкие буквы
+    special = {"Ш", "Ж", "Ы", "М", "Щ"}
+
+    # --- собираем историю попыток с выравниванием ---
     lines = []
     for gw in cg["guesses"]:
         fb = make_feedback(secret, gw)
-        # один пробел в начале, два между буквами
-        spaced = " " + "  ".join(ch.upper() for ch in gw)
+        # строим строку букв с условными отступами
+        parts = []
+        for i, ch in enumerate(gw):
+            ch_up = ch.upper()
+            if i == 0:
+                prefix = "" if ch_up in special else " "
+            else:
+                prefix = " " if ch_up in special else "  "
+            parts.append(f"{prefix}**{ch_up}**")
+        spaced = "".join(parts)
+
         lines.append(f"{fb}\n{spaced}")
 
-    # склеиваем с двойными переводами строки и оборачиваем в <pre>
-    block = "<pre>" + "\n\n".join(lines) + "</pre>"
-
-    # отправляем как HTML, чтобы <pre> сработал
-    await update.message.reply_text(block, parse_mode="HTML")
+    text = "\n\n".join(lines)
+    await update.message.reply_text(text, parse_mode="Markdown")
 
     # ——— проверяем победу ———
     if guess == secret:
@@ -508,6 +517,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Игра продолжается — сохраняем и ждём следующей догадки
     save_store(store)
     return GUESSING
+
 
 
 async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
