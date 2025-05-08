@@ -407,7 +407,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "stats": {"games_played": 0, "wins": 0, "losses": 0}
     })
 
-    # Обновляем last_seen
+    # Обновляем время последнего визита
     user_entry["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
 
     # Проверяем, есть ли активная игра
@@ -430,18 +430,15 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # --- Собираем историю попыток в HTML, с жирными буквами и неразрывными пробелами ---
-    blocks: list[str] = []
+    # --- Собираем историю попыток ---
+    blocks = []
     for g in cg["guesses"]:
-        fb_line = make_feedback(secret, g)  # 🟩🟨🟥…
-        # Делаем буквы жирными и разделяем двумя неразрывными пробелами,
-        # добавляем один NBSP в начале для выравнивания
-        parts = [f"<b>{ch.upper()}</b>" for ch in g]
-        letters_html = "&nbsp;" + "&nbsp;&nbsp;".join(parts)
-        blocks.append(f"{fb_line}\n{letters_html}")
+        fb      = make_feedback(secret, g)                # 🟩🟨🟥…
+        letters = " " + "  ".join(ch.upper() for ch in g) #  A  B  C  D
+        blocks.append(f"{fb}\n{letters}")
 
-    html = "\n\n".join(blocks)
-    await update.message.reply_text(html, parse_mode="HTML")
+    text = "\n\n".join(blocks)
+    await update.message.reply_text(text)
 
     # —— Победа ——
     if guess == secret:
@@ -455,9 +452,10 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         g["total_wins"] += 1
         g["win_rate"] = g["total_wins"] / g["total_games"]
 
+        # Обновляем топ‑игрока
         top_uid, top_data = max(
             store["users"].items(),
-            key=lambda kv: kv[1].get("stats", {}).get("wins", 0)
+            key=lambda kv: kv[1]["stats"]["wins"]
         )
         store["global"]["top_player"] = {
             "user_id":  top_uid,
