@@ -407,7 +407,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "stats": {"games_played": 0, "wins": 0, "losses": 0}
     })
 
-    # Обновляем last_seen
+    # Обновляем время последнего визита
     user_entry["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
 
     # Проверяем, есть ли активная игра
@@ -430,32 +430,29 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # Собираем историю в кодовый блок (моноширинный шрифт)
-    history_lines = []
+    # --- Собираем историю попыток в кодовый блок ---
+    blocks = []
     for g in cg["guesses"]:
-        fb_line = make_feedback(secret, g)                 # 🟩🟨🟥…
-        letters = " ".join(ch.upper() for ch in g)         # A B C D E
-        history_lines.append(fb_line)
-        history_lines.append(letters)
+        fb      = make_feedback(secret, g)                  # 🟩🟨🟥…
+        letters = " " + "  ".join(ch.upper() for ch in g)   #  A  B  C  D
+        blocks.append(f"{fb}\n{letters}")
 
-    code_block = "```\n" + "\n".join(history_lines) + "\n```"
-    await update.message.reply_text(code_block, parse_mode="Markdown")
+    code = "```\n" + "\n".join(blocks) + "\n```"
+    await update.message.reply_text(code, parse_mode="Markdown")
 
     # —— Победа ——
     if guess == secret:
-        # Обновляем личную статистику
         stats = user_entry["stats"]
         stats["games_played"] += 1
         stats["wins"] += 1
         stats["win_rate"] = stats["wins"] / stats["games_played"]
 
-        # Обновляем глобальную статистику
         g = store["global"]
         g["total_games"] += 1
         g["total_wins"] += 1
         g["win_rate"] = g["total_wins"] / g["total_games"]
 
-        # Находим топ‑игрока
+        # Обновляем топ‑игрока
         top_uid, top_data = max(
             store["users"].items(),
             key=lambda kv: kv[1].get("stats", {}).get("wins", 0)
@@ -472,7 +469,6 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Чтобы сыграть вновь, введи команду /play."
         )
 
-        # Завершаем игру
         del user_entry["current_game"]
         context.user_data.pop("game_active", None)
         context.user_data["just_done"] = True
@@ -504,6 +500,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Игра продолжается
     return GUESSING
+
 
 
 async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
