@@ -187,54 +187,101 @@ def update_user_activity(user) -> None:
     save_store(store)
 
 
+def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
+    """
+    Для каждой буквы возвращает одно из:
+      - "green"  (если буква когда-либо была 🟩)
+      - "yellow" (если буква когда-либо была 🟨, и не была 🟩)
+      - "red"    (если буква была ⬜/не встречалась в секрете, и не была ни 🟩, ни 🟨)
+    """
+    status: dict[str, str] = {}
+    for guess in guesses:
+        # сначала делаем per‐position feedback
+        fb: list[str] = []
+        secret_chars = list(secret)
+        # зелёные
+        for i, ch in enumerate(guess):
+            if secret[i] == ch:
+                fb.append("🟩")
+                secret_chars[i] = None
+            else:
+                fb.append(None)
+        # жёлтые/красные
+        for i, ch in enumerate(guess):
+            if fb[i] is None:
+                if ch in secret_chars:
+                    fb[i] = "🟨"
+                    secret_chars[secret_chars.index(ch)] = None
+                else:
+                    fb[i] = "⬜"
+        # обновляем глобальный статус
+        for ch, sym in zip(guess, fb):
+            prev = status.get(ch)
+            if sym == "🟩":
+                status[ch] = "green"
+            elif sym == "🟨" and prev != "green":
+                status[ch] = "yellow"
+            elif sym == "⬜" and prev not in ("green", "yellow"):
+                status[ch] = "red"
+    return status
 
-def render_full_board(guesses: list[str], secret: str, total_rows: int = 6) -> BytesIO:
-    """
-    Рисует полную доску Wordle из total_rows строк:
-      • первые len(guesses) строк — заполнены по результатам
-      • остальные строки — пустые белые квадраты
-    Подгоняет ширину под max_width_px, чтобы влезало на мобильный экран.
-    """
-    # Параметры
-    max_width_px = 1080
-    padding      = 8
-    default_sq   = 80
+
+# Русская раскладка виртуальной клавиатуры
+KB_LAYOUT = [
+    list("йцукенгшщзхъ"),
+    list("фывапролджэ"),
+    list("ячсмитьбю")
+]
+
+def render_full_board_with_keyboard(
+    guesses: list[str],
+    secret: str,
+    total_rows: int = 6,
+    max_width_px: int = 1080
+) -> BytesIO:
+    padding       = 8
+    board_default = 80
 
     cols      = len(secret)
-    rows      = total_rows
     total_pad = (cols + 1) * padding
 
-    # вычисляем размер квадратика
-    square = min(default_sq, (max_width_px - total_pad) // cols)
-    square = max(20, square)
+    # Размер квадратика для доски (впись в max_width_px)
+    board_sq = min(board_default, (max_width_px - total_pad) // cols)
+    board_sq = max(20, board_sq)
 
-    width  = cols * square + total_pad
-    height = rows * square + (rows + 1) * padding
+    board_w  = cols * board_sq + total_pad
+    board_h  = total_rows * board_sq + (total_rows + 1) * padding
 
-    # шрифт под размер квадратика
-    font = ImageFont.truetype("DejaVuSans-Bold.ttf", int(square * 0.6))
+    # Параметры клавиатуры
+    kb_rows = len(KB_LAYOUT)
+    kb_cols = max(len(r) for r in KB_LAYOUT)
+    kb_square = min(board_sq, (board_w - (kb_cols + 1)*padding)//kb_cols)
+    kb_square = max(20, kb_square)
+    kb_w = kb_cols * kb_square + (kb_cols + 1)*padding
+    # Центрируем клавиатуру под доской
+    kb_xoff = (board_w - kb_w) // 2
 
-    img  = Image.new("RGB", (width, height), (30, 30, 30))
+    total_h = board_h + kb_rows * kb_square + (kb_rows + 1) * padding
+
+    img  = Image.new("RGB", (board_w, total_h), (30, 30, 30))
     draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("DejaVuSans-Bold.ttf", int(board_sq * 0.6))
 
-    for r in range(rows):
-        # y-координата ряда
-        y0 = padding + r * (square + padding)
-
-        # для уже сыгранных ходов — рисуем цвет и буквы,
-        # для остальных — белый фон без букв
+    # --- Рисуем доску ---
+    for r in range(total_rows):
+        y0 = padding + r*(board_sq + padding)
         if r < len(guesses):
             guess = guesses[r]
-            fb    = make_feedback(secret, guess)
+            fb    = make_feedback(secret, guess)  # 🟩🟨⬜
         else:
             guess = None
             fb    = [None] * cols
 
         for c in range(cols):
-            x0 = padding + c * (square + padding)
-            x1, y1 = x0 + square, y0 + square
+            x0, x1 = padding + c*(board_sq+padding), padding + c*(board_sq+padding) + board_sq
+            y1 = y0 + board_sq
 
-            # выбираем фон
+            # фон: зелёный, жёлтый или белый
             if fb[c] == "🟩":
                 bg = (106, 170, 100)
             elif fb[c] == "🟨":
@@ -242,30 +289,52 @@ def render_full_board(guesses: list[str], secret: str, total_rows: int = 6) -> B
             else:
                 bg = (255, 255, 255)
 
-            # рамка
             draw.rectangle([x0, y0, x1, y1], fill=bg, outline=(0,0,0), width=2)
 
-            # буква только для сыгранных ходов
+            # буква только если есть guess
             if guess:
                 ch = guess[c].upper()
-                # цвет текста: чёрный на белом фоне, иначе белый
-                text_color = (0,0,0) if bg == (255,255,255) else (255,255,255)
+                tc = (0,0,0) if bg==(255,255,255) else (255,255,255)
                 bbox = draw.textbbox((0,0), ch, font=font)
                 w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-                tx = x0 + (square - w) / 2
-                ty = y0 + (square - h) / 2
-                draw.text((tx, ty), ch, font=font, fill=text_color)
+                tx = x0 + (board_sq - w)/2
+                ty = y0 + (board_sq - h)/2
+                draw.text((tx,ty), ch, font=font, fill=tc)
 
-    # на всякий случай: если получилось чуть шире, масштабируем
-    if img.width > max_width_px:
-        ratio = max_width_px / img.width
-        img = img.resize((int(img.width*ratio), int(img.height*ratio)), Image.LANCZOS)
+    # --- Вычисляем статус букв для клавиатуры ---
+    letter_status = compute_letter_status(secret, guesses)
+    # статус: "green", "yellow", "red" (не в слове), или absent
+
+    # --- Рисуем клавиатуру ---
+    for kr, row in enumerate(KB_LAYOUT):
+        y0 = board_h + padding + kr*(kb_square + padding)
+        for kc, ch in enumerate(row):
+            x0 = kb_xoff + padding + kc*(kb_square + padding)
+            x1, y1 = x0 + kb_square, y0 + kb_square
+
+            st = letter_status.get(ch, "absent")
+            if st == "green":
+                bg = (106, 170, 100)
+            elif st == "yellow":
+                bg = (201, 180,  88)
+            elif st == "red":
+                bg = (128, 128, 128)   # серый для использованных не в слове
+            else:
+                bg = (255, 255, 255)   # белый для неиспользованных
+
+            draw.rectangle([x0, y0, x1, y1], fill=bg, outline=(0,0,0), width=1)
+            tc = (0,0,0) if bg==(255,255,255) else (255,255,255)
+            letter = ch.upper()
+            bbox = draw.textbbox((0,0), letter, font=font)
+            w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
+            tx = x0 + (kb_square - w)/2
+            ty = y0 + (kb_square - h)/2
+            draw.text((tx,ty), letter, font=font, fill=tc)
 
     buf = BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
     return buf
-
 
 # --- Константы и словарь ---
 ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= range(6)
@@ -288,7 +357,7 @@ WORDLIST = sorted(
     )
 )
 
-GREEN, YELLOW, RED = "🟩", "🟨", "⬜"
+GREEN, YELLOW, WHITE = "🟩", "🟨", "⬜"
 
 def make_feedback(secret: str, guess: str) -> str:
     fb = [None] * len(guess)
@@ -305,7 +374,7 @@ def make_feedback(secret: str, guess: str) -> str:
                 fb[i] = YELLOW
                 secret_chars[secret_chars.index(ch)] = None
             else:
-                fb[i] = RED
+                fb[i] = WHITE
     return "".join(fb)
 
 
@@ -482,21 +551,21 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-    store = load_store()
-    user_entry = store["users"].setdefault(user_id, {
+    store   = load_store()
+    user    = store["users"].setdefault(user_id, {
         "first_name": update.effective_user.first_name,
-        "stats": {"games_played": 0, "wins": 0, "losses": 0}
+        "stats": {"games_played":0,"wins":0,"losses":0}
     })
 
-    # Обновляем время последнего визита
-    user_entry["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
+    # Обновляем last_seen
+    user["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
 
-    # Проверяем, есть ли активная игра
-    if "current_game" not in user_entry:
-        await update.message.reply_text("Нет активной игры, начни /play")
+    # Проверяем активную игру
+    if "current_game" not in user:
+        await update.message.reply_text("Нет активной игре, начни /play")
         return ConversationHandler.END
 
-    cg     = user_entry["current_game"]
+    cg     = user["current_game"]
     guess  = update.message.text.strip().lower()
     secret = cg["secret"]
     length = len(secret)
@@ -511,8 +580,8 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # Рендерим всю доску из 6 строк
-    img_buf = render_full_board(cg["guesses"], secret, total_rows=6)
+    # Рендерим доску + мини-клавиатуру
+    img_buf = render_full_board_with_keyboard(cg["guesses"], secret, total_rows=6)
     await update.message.reply_photo(
         photo=InputFile(img_buf, filename="wordle_board.png"),
         caption=f"Попытка {cg['attempts']} из 6"
@@ -520,7 +589,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # —— Победа ——
     if guess == secret:
-        stats = user_entry["stats"]
+        stats = user["stats"]
         stats["games_played"] += 1
         stats["wins"] += 1
         stats["win_rate"] = stats["wins"] / stats["games_played"]
@@ -546,7 +615,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Чтобы сыграть вновь, введи /play."
         )
 
-        del user_entry["current_game"]
+        del user["current_game"]
         context.user_data.pop("game_active", None)
         context.user_data["just_done"] = True
         save_store(store)
@@ -554,7 +623,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # —— Поражение ——
     if cg["attempts"] >= 6:
-        stats = user_entry["stats"]
+        stats = user["stats"]
         stats["games_played"] += 1
         stats["losses"] += 1
         stats["win_rate"] = stats["wins"] / stats["games_played"]
@@ -569,7 +638,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Чтобы начать новую игру, введи /play."
         )
 
-        del user_entry["current_game"]
+        del user["current_game"]
         context.user_data.pop("game_active", None)
         context.user_data["just_done"] = True
         save_store(store)
