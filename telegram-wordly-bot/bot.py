@@ -416,13 +416,7 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     text = update.message.text.strip()
     if not text.isdigit() or not 4 <= int(text) <= 11:
-        err = await update.message.reply_text("Нужно число от 4 до 11.")
-        # запланировать удаление этого сообщения через 2 секунды
-        context.job_queue.run_once(
-            _delete_message_job,
-            when=2,
-            context={"chat_id": err.chat_id, "message_id": err.message_id}
-        )
+        await update.message.reply_text("Нужно число от 4 до 11.")
         return ASK_LENGTH
 
     length = int(text)
@@ -479,13 +473,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Валидация
     if len(guess) != length or guess not in WORDLIST:
-        err = await update.message.reply_text(f"Введите существующее слово из {length} букв.")
-        # запланировать удаление этого сообщения через 2 секунды
-        context.job_queue.run_once(
-            _delete_message_job,
-            when=2,
-            context={"chat_id": err.chat_id, "message_id": err.message_id}
-        )
+        await update.message.reply_text(f"Введите существующее слово из {length} букв.")
         return GUESSING
 
     # Сохраняем догадку
@@ -493,8 +481,11 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
 
     # Фидбек
-    fb = make_feedback(secret, guess)
-    msg = await update.message.reply_text(f"{fb}\n{guess}")
+    fb = make_feedback(secret, guess)       # например "🟨🟩🟥🟥🟥🟥"
+    letters = " ".join(ch.upper() for ch in guess)  # "К О Р О В А"
+
+    # отправляем всё одним сообщением
+    await update.message.reply_text(f"{fb}\n{letters}")
 
     # Победа
     if guess == secret:
