@@ -189,67 +189,58 @@ def update_user_activity(user) -> None:
 
 def render_wordle_image(guesses: list[str], secret: str) -> BytesIO:
     """
-    Рисует доску Wordle с цветами (🟩, 🟨, ⬜),
-    автоматически подгоняя размеры квадратиков под max_width_px.
+    Рисует Wordle-доску в одну строку, автоматически масштабируя
+    ширину до max_width_px, чтобы встало даже 11 букв на экране телефона.
+    Цвета: 🟩→зелёный, 🟨→жёлтый, иначе белый.
     """
-    # Параметры
-    max_width_px   = 600      # максимально допустимая ширина всего изображения
-    padding        = 8        # px между квадратиками и по краям
-    default_sq     = 80       # желаемый размер квадратика
-    rows, cols     = len(guesses), len(secret)
+    # Максимальная ширина итогового изображения (под телефоны берём ~400px)
+    max_width_px = 400
+    padding     = 8
+    default_sq  = 80
 
-    # 1) Вычисляем размер квадратика так, чтобы доска влезала в max_width_px
+    cols = len(secret)
     total_pad = (cols + 1) * padding
-    square = default_sq
-    if cols * default_sq + total_pad > max_width_px:
-        square = max(
-            20,  # нижняя граница размера квадратика
-            (max_width_px - total_pad) // cols
-        )
+    # вычисляем базовый квадратик
+    if cols * default_sq + total_pad <= max_width_px:
+        square = default_sq
+    else:
+        square = max(20, (max_width_px - total_pad) // cols)
 
     width  = cols * square + total_pad
-    height = rows * square + (rows + 1) * padding
+    height = len(guesses) * square + (len(guesses) + 1) * padding
 
-    # Шрифт — масштабируем пропорционально square
-    font_path = "DejaVuSans-Bold.ttf"
-    font_size = int(square * 0.6)
-    font      = ImageFont.truetype(font_path, font_size)
+    # шрифт под размер квадратика
+    font = ImageFont.truetype("DejaVuSans-Bold.ttf", int(square * 0.6))
 
-    # Создаем полотно
-    img  = Image.new("RGB", (width, height), color=(30,30,30))
+    img  = Image.new("RGB", (width, height), color=(30, 30, 30))
     draw = ImageDraw.Draw(img)
 
     for r, guess in enumerate(guesses):
-        fb = make_feedback(secret, guess)  # 🟩🟨⬜…
+        fb = make_feedback(secret, guess)
+        y0 = padding + r * (square + padding)
         for c, ch in enumerate(guess):
             x0 = padding + c * (square + padding)
-            y0 = padding + r * (square + padding)
             x1, y1 = x0 + square, y0 + square
 
-            # фон по фидбеку
-            if   fb[c] == "🟩": bg = (106,170,100)
-            elif fb[c] == "🟨": bg = (201,180, 88)
-            else:               bg = (255,255,255)
+            # фон
+            if fb[c] == "🟩": bg = (106,170,100)
+            elif fb[c] == "🟨": bg = (201,180,88)
+            else:              bg = (255,255,255)
 
-            # цвет текста: на белом — чёрный, иначе — белый
-            text_color = (0,0,0) if bg == (255,255,255) else (255,255,255)
-
+            tc = (0,0,0) if bg == (255,255,255) else (255,255,255)
             draw.rectangle([x0,y0,x1,y1], fill=bg, outline=(0,0,0), width=2)
 
-            # получаем размер буквы
+            # вычисляем размер буквы через textbbox
             bbox = draw.textbbox((0,0), ch.upper(), font=font)
             w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
+            tx = x0 + (square - w)/2
+            ty = y0 + (square - h)/2
+            draw.text((tx, ty), ch.upper(), font=font, fill=tc)
 
-            tx = x0 + (square - w) / 2
-            ty = y0 + (square - h) / 2
-            draw.text((tx, ty), ch.upper(), font=font, fill=text_color)
-
-    # 2) На всякий случай — если итоговая ширина всё ещё больше max_width_px,
-    #    делаем финальное масштабирование:
+    # на всякий случай: если всё же шире, масштабируем
     if img.width > max_width_px:
         ratio = max_width_px / img.width
-        new_size = (int(img.width * ratio), int(img.height * ratio))
-        img = img.resize(new_size, Image.LANCZOS)
+        img = img.resize((int(img.width*ratio), int(img.height*ratio)), Image.LANCZOS)
 
     buf = BytesIO()
     img.save(buf, format="PNG")
@@ -502,9 +493,9 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_store(store)
 
     # Рендерим доску в картинку
-    img_buf = render_wordle_image(cg["guesses"], secret)
+    img_buf = render_wordle_image(cg["guesses"], cg["secret"])
     await update.message.reply_photo(
-        photo=InputFile(img_buf, filename="wordle_board.png"),
+        photo=InputFile(img_buf, filename="wordle.png"),
         caption=f"Попытка {cg['attempts']} из 6"
     )
 
