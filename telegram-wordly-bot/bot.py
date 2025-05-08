@@ -235,7 +235,7 @@ KB_LAYOUT = [
 def render_full_board_with_keyboard(
     guesses: list[str],
     secret: str,
-    total_rows: int = 8,
+    total_rows: int = 6,
     max_width_px: int = 1080
 ) -> BytesIO:
     """
