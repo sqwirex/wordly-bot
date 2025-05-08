@@ -434,7 +434,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     blocks = []
     for g in cg["guesses"]:
         fb      = make_feedback(secret, g)                  # 🟩🟨🟥…
-        letters = " " + "  ".join(ch.upper() for ch in g)   #  A  B  C  D
+        letters = " " + " ".join(ch.upper() for ch in g)   #  A  B  C  D
         blocks.append(f"{fb}\n{letters}")
 
     code = "```\n" + "\n".join(blocks) + "\n```"
