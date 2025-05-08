@@ -339,6 +339,15 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _delete_message_job(context: ContextTypes.DEFAULT_TYPE):
+    job_ctx = context.job.context
+    chat_id, message_id = job_ctx["chat_id"], job_ctx["message_id"]
+    try:
+        await context.bot.delete_message(chat_id, message_id)
+    except:
+        pass
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     store = load_store()
@@ -407,7 +416,13 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     text = update.message.text.strip()
     if not text.isdigit() or not 4 <= int(text) <= 11:
-        await update.message.reply_text("Нужно число от 4 до 11.")
+        err = await update.message.reply_text("Нужно число от 4 до 11.")
+        # запланировать удаление этого сообщения через 2 секунды
+        context.job_queue.run_once(
+            _delete_message_job,
+            when=2,
+            context={"chat_id": err.chat_id, "message_id": err.message_id}
+        )
         return ASK_LENGTH
 
     length = int(text)
@@ -464,7 +479,13 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Валидация
     if len(guess) != length or guess not in WORDLIST:
-        await update.message.reply_text(f"Введите существующее слово из {length} букв.")
+        err = await update.message.reply_text(f"Введите существующее слово из {length} букв.")
+        # запланировать удаление этого сообщения через 2 секунды
+        context.job_queue.run_once(
+            _delete_message_job,
+            when=2,
+            context={"chat_id": err.chat_id, "message_id": err.message_id}
+        )
         return GUESSING
 
     # Сохраняем догадку
@@ -473,7 +494,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Фидбек
     fb = make_feedback(secret, guess)
-    await update.message.reply_text(fb)
+    msg = await update.message.reply_text(f"{fb}\n{guess}")
 
     # Победа
     if guess == secret:
@@ -548,43 +569,29 @@ async def ignore_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Обновляем профиль пользователя
     update_user_activity(update.effective_user)
-
     store = load_store()
     uid = str(update.effective_user.id)
     user = store["users"].get(uid)
-
-    # Если игры нет вовсе — запрещаем, возвращаемся в GUESSING, 
-    # но обработчик my_letters_not_allowed в ASK_LENGTH
     if not user or "current_game" not in user:
         await update.message.reply_text("Эту команду можно использовать только во время игры.")
         return GUESSING
 
     cg = user["current_game"]
-    guesses = cg.get("guesses", [])
     secret = cg["secret"]
+    guesses = cg.get("guesses", [])
 
-    alphabet = list("абвгдеёжзийклмнопрстуфхцчшщъыьэюя")
-
-    # Если ни одной попытки ещё не было — все буквы неизвестны
     if not guesses:
-        await update.message.reply_text(UNK + " " + " ".join(alphabet))
+        await update.message.reply_text("Пока нет ни одной попытки.")
         return GUESSING
 
-    status = compute_letter_status(secret, guesses)
-    greens  = [ch for ch in alphabet if status.get(ch) == "green"]
-    yellows = [ch for ch in alphabet if status.get(ch) == "yellow"]
-    reds    = [ch for ch in alphabet if status.get(ch) == "red"]
-    unused  = [ch for ch in alphabet if ch not in status]
-
     lines = []
-    if greens:  lines.append(GREEN  + " " + " ".join(greens))
-    if yellows: lines.append(YELLOW + " " + " ".join(yellows))
-    if reds:    lines.append(RED    + " " + " ".join(reds))
-    if unused:  lines.append(UNK    + " " + " ".join(unused))
+    for g in guesses:
+        fb = make_feedback(secret, g)
+        # сначала квадраты, потом само слово
+        lines.append(f"{fb}\n{g}")
 
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text("\n\n".join(lines))
     return GUESSING
 
 
