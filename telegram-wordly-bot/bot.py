@@ -186,6 +186,7 @@ def update_user_activity(user) -> None:
 
     save_store(store)
 
+
 # --- Константы и словарь ---
 ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= range(6)
 
@@ -228,28 +229,44 @@ def make_feedback(secret: str, guess: str) -> str:
     return "".join(fb)
 
 def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
-    status: dict[str, str] = {}
+    """
+    Возвращает для каждой буквы одно из "green", "yellow" или "red",
+    по всем вашим попыткам в guesses.
+    """
+    status: dict[str,str] = {}
     for guess in guesses:
-        # зелёные
+        # сперва сделаем per‐position feedback точно как в Wordle:
+        fb = []                 # список символов 🟩🟨🟥
+        secret_chars = list(secret)
+        # 1) зелёные
         for i, ch in enumerate(guess):
             if secret[i] == ch:
-                status[ch] = "green"
-        # копия для жёлтых
-        secret_chars = list(secret)
-        for i, ch in enumerate(guess):
-            if status.get(ch) == "green":
+                fb.append(GREEN)
                 secret_chars[i] = None
-        # жёлтые/красные
-        for i, ch in enumerate(guess):
-            if status.get(ch) == "green":
-                continue
-            if ch in secret_chars:
-                if status.get(ch) != "green":
-                    status[ch] = "yellow"
-                secret_chars[secret_chars.index(ch)] = None
             else:
-                if status.get(ch) not in ("green", "yellow"):
-                    status[ch] = "red"
+                fb.append(None)
+        # 2) жёлтые/красные
+        for i, ch in enumerate(guess):
+            if fb[i] is None:
+                if ch in secret_chars:
+                    fb[i] = YELLOW
+                    secret_chars[secret_chars.index(ch)] = None
+                else:
+                    fb[i] = RED
+
+        # теперь обновляем глобальный status по буквам:
+        for ch, sym in zip(guess, fb):
+            prev = status.get(ch)
+            # green перекрывает всё
+            if sym == GREEN:
+                status[ch] = "green"
+            # yellow — если раньше не было green
+            elif sym == YELLOW and prev != "green":
+                status[ch] = "yellow"
+            # red — только если ранее не было ни green, ни yellow
+            elif sym == RED and prev not in ("green","yellow"):
+                status[ch] = "red"
+
     return status
 
 # --- Обработчики команд ---
