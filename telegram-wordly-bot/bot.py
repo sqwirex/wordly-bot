@@ -429,24 +429,23 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["guesses"].append(guess)
     cg["attempts"] += 1
 
-    # Специальные широкие буквы
     special = {"Ш", "Ж", "Ы", "М", "Щ"}
 
     # --- собираем историю попыток с выравниванием ---
     lines = []
     for gw in cg["guesses"]:
         fb = make_feedback(secret, gw)
-        # строим строку букв с условными отступами
         parts = []
         for i, ch in enumerate(gw):
             ch_up = ch.upper()
             if i == 0:
-                prefix = "" if ch_up in special else " "
+                # в начале всегда один пробел перед любой буквой
+                prefix = " "
             else:
+                # после первого: один пробел для special, два для остальных
                 prefix = " " if ch_up in special else "  "
             parts.append(f"{prefix}**{ch_up}**")
         spaced = "".join(parts)
-
         lines.append(f"{fb}\n{spaced}")
 
     text = "\n\n".join(lines)
