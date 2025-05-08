@@ -217,14 +217,12 @@ def render_wordle_image(guesses: list[str], secret: str) -> BytesIO:
 
             draw.rectangle([x0,y0,x1,y1], fill=bg, outline=(0,0,0), width=2)
 
-            # вот здесь меняем вызов:
-            w, h = font.getsize(ch.upper())
-            # или, если хотите точнее:
-            # bbox = draw.textbbox((0,0), ch.upper(), font=font)
-            # w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
+            # корректный способ измерить текст:
+            bbox = draw.textbbox((0, 0), ch.upper(), font=font)
+            w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
             tx = x0 + (square - w) / 2
-            ty = y0 + (square - h) / 2 - 5
+            ty = y0 + (square - h) / 2
             draw.text((tx, ty), ch.upper(), font=font, fill=text_color)
 
     buf = BytesIO()
