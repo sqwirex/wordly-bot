@@ -407,7 +407,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "stats": {"games_played": 0, "wins": 0, "losses": 0}
     })
 
-    # Обновляем время последнего визита
+    # Обновляем last_seen
     user_entry["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
 
     # Проверяем, есть ли активная игра
@@ -430,15 +430,26 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # --- Собираем историю попыток в кодовый блок ---
-    blocks = []
-    for g in cg["guesses"]:
-        fb      = make_feedback(secret, g)                  # 🟩🟨🟥…
-        letters = " " + " ".join(ch.upper() for ch in g)   #  A  B  C  D
-        blocks.append(f"{fb}\n{letters}")
+    # Набор «широких» букв
+    special = {"Ш", "Ж", "Ы", "М", "Щ"}
 
-    code = "```\n" + "\n".join(blocks) + "\n```"
-    await update.message.reply_text(code, parse_mode="Markdown")
+    # --- Собираем историю попыток в кодовый блок ---
+    history = []
+    for g in cg["guesses"]:
+        fb_line = make_feedback(secret, g)
+        # формируем строку букв с условным количеством пробелов
+        letters = ""
+        for i, ch in enumerate(g):
+            ch_up = ch.upper()
+            # всегда 1 пробел перед первой буквой,
+            # для «special» — 1 пробел, иначе — 2 пробела
+            spaces = 1 if (i == 0 or ch_up in special) else 2
+            letters += " " * spaces + ch_up
+        history.append(fb_line)
+        history.append(letters)
+
+    code_block = "```\n" + "\n".join(history) + "\n```"
+    await update.message.reply_text(code_block, parse_mode="Markdown")
 
     # —— Победа ——
     if guess == secret:
@@ -452,7 +463,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         g["total_wins"] += 1
         g["win_rate"] = g["total_wins"] / g["total_games"]
 
-        # Обновляем топ‑игрока
+        # обновляем топ‑игрока
         top_uid, top_data = max(
             store["users"].items(),
             key=lambda kv: kv[1].get("stats", {}).get("wins", 0)
@@ -500,7 +511,6 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Игра продолжается
     return GUESSING
-
 
 
 async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
