@@ -194,7 +194,7 @@ def render_wordle_image(guesses: list[str], secret: str) -> BytesIO:
     автоматически подгоняя размеры квадратиков под max_width_px.
     """
     # Параметры
-    max_width_px   = 600      # максимально допустимая ширина всего изображения
+    max_width_px   = 200      # максимально допустимая ширина всего изображения
     padding        = 8        # px между квадратиками и по краям
     default_sq     = 80       # желаемый размер квадратика
     rows, cols     = len(guesses), len(secret)
