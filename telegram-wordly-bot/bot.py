@@ -240,7 +240,7 @@ def render_full_board_with_keyboard(
 ) -> BytesIO:
     """
     Рисует доску Wordle из total_rows строк + мини-клавиатуру снизу.
-    Параметры: padding=8, board_def=80, total_rows=8, max_width_px=1080.
+    Параметры: padding=8, board_def=80, total_rows=6, max_width_px=1080.
     """
     padding   = 8       # ← изменено на 8
     board_def = 80
