@@ -8,6 +8,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
 from io import BytesIO
 from collections import Counter
+from PIL import Image, ImageDraw, ImageFont
 
 from telegram import (
     Update,
@@ -186,6 +187,62 @@ def update_user_activity(user) -> None:
     save_store(store)
 
 
+def render_wordle_image(guesses: list[str], secret: str) -> BytesIO:
+    """
+    Рисует доску Wordle с цветами:
+      🟩 — зелёный
+      🟨 — жёлтый
+      ⬜ — белый (вместо красного)
+    Возвращает PNG в BytesIO.
+    """
+    # Размеры
+    square = 100        # пикселей на квадрат
+    padding = 10        # отступ между квадратиками
+    font_path = "DejaVuSans-Bold.ttf"
+    font = ImageFont.truetype(font_path, 72)
+
+    rows = len(guesses)
+    cols = len(secret)
+    width  = cols * square + (cols + 1) * padding
+    height = rows * square + (rows + 1) * padding
+
+    img = Image.new("RGB", (width, height), color=(30, 30, 30))
+    draw = ImageDraw.Draw(img)
+
+    for r, guess in enumerate(guesses):
+        fb = make_feedback(secret, guess)  # строка из 🟩🟨⬜
+        for c, ch in enumerate(guess):
+            x0 = padding + c * (square + padding)
+            y0 = padding + r * (square + padding)
+            x1, y1 = x0 + square, y0 + square
+
+            # выбираем фон
+            if fb[c] == "🟩":
+                bg = (106, 170, 100)
+            elif fb[c] == "🟨":
+                bg = (201, 180,  88)
+            else:
+                bg = (255, 255, 255)  # белый вместо красного
+
+            # цвет букв: чёрный на белом, иначе — белый
+            text_color = (0, 0, 0) if bg == (255,255,255) else (255, 255, 255)
+
+            # рисуем квадратик
+            draw.rectangle([x0, y0, x1, y1], fill=bg, outline=(0, 0, 0), width=2)
+
+            # центрируем букву
+            w, h = draw.textsize(ch.upper(), font=font)
+            tx = x0 + (square - w) / 2
+            ty = y0 + (square - h) / 2 - 5
+            draw.text((tx, ty), ch.upper(), font=font, fill=text_color)
+
+    # в буфер
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
+
+
 # --- Константы и словарь ---
 ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= range(6)
 
@@ -207,7 +264,7 @@ WORDLIST = sorted(
     )
 )
 
-GREEN, YELLOW, RED = "🟩", "🟨", "🟥"
+GREEN, YELLOW, RED = "🟩", "🟨", "⬜"
 
 def make_feedback(secret: str, guess: str) -> str:
     fb = [None] * len(guess)
@@ -430,15 +487,12 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # --- Собираем историю попыток ---
-    blocks = []
-    for g in cg["guesses"]:
-        fb      = make_feedback(secret, g)                # 🟩🟨🟥…
-        letters = " " + "  ".join(ch.upper() for ch in g) #  A  B  C  D
-        blocks.append(f"{fb}\n{letters}")
-
-    text = "\n\n".join(blocks)
-    await update.message.reply_text(text)
+    # Рендерим доску в картинку
+    img_buf = render_wordle_image(cg["guesses"], secret)
+    await update.message.reply_photo(
+        photo=InputFile(img_buf, filename="wordle_board.png"),
+        caption=f"Попытка {cg['attempts']} из 6"
+    )
 
     # —— Победа ——
     if guess == secret:
@@ -452,7 +506,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         g["total_wins"] += 1
         g["win_rate"] = g["total_wins"] / g["total_games"]
 
-        # Обновляем топ‑игрока
+        # Обновляем топ-игрока
         top_uid, top_data = max(
             store["users"].items(),
             key=lambda kv: kv[1]["stats"]["wins"]
@@ -466,7 +520,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"🎉 Поздравляю! Угадал за {cg['attempts']} "
             f"{'попытка' if cg['attempts']==1 else 'попытки' if 2<=cg['attempts']<=4 else 'попыток'}.\n"
-            "Чтобы сыграть вновь, введи команду /play."
+            "Чтобы сыграть вновь, введи /play."
         )
 
         del user_entry["current_game"]
@@ -489,7 +543,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"💔 Попытки закончились. Было слово «{secret}».\n"
-            "Чтобы начать новую игру, введи команду /play."
+            "Чтобы начать новую игру, введи /play."
         )
 
         del user_entry["current_game"]

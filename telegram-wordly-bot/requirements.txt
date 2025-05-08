@@ -1,4 +1,5 @@
 # requirements.txt
 python-telegram-bot[job-queue]
 python-dotenv
+pillow
 
