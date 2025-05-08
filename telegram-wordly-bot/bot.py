@@ -255,10 +255,12 @@ def render_full_board_with_keyboard(
         factor = 0.6
     elif cols == 7:
         factor = 0.5
-    elif cols <= 5:
-        factor = 0.3
-    else:  # 6 букв
+    elif cols == 6:
         factor = 0.4
+    elif cols == 5:
+        factor = 0.3
+    elif cols == 4:
+        factor = 0.25
 
     kb_sq   = max(12, int(board_sq * factor))
     kb_rows = len(KB_LAYOUT)
@@ -302,7 +304,7 @@ def render_full_board_with_keyboard(
                 bbox = draw.textbbox((0,0), ch, font=font_board)
                 w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
                 draw.text(
-                    (x0 + (board_sq - w)/2, y0 + (board_sq - h)/2),
+                    (x0 + (board_sq-w)/2, y0 + (board_sq-h)/2),
                     ch, font=font_board, fill=tc
                 )
 
@@ -336,7 +338,7 @@ def render_full_board_with_keyboard(
             bbox   = draw.textbbox((0,0), letter, font=font_kb)
             w, h   = bbox[2]-bbox[0], bbox[3]-bbox[1]
             draw.text(
-                (x0 + (kb_sq - w)/2, y0 + (kb_sq - h)/2),
+                (x0 + (kb_sq-w)/2, y0 + (kb_sq-h)/2),
                 letter, font=font_kb, fill=tc
             )
 
