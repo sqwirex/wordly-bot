@@ -429,16 +429,19 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["guesses"].append(guess)
     cg["attempts"] += 1
 
-    # Формируем текст для всех попыток
+    # --- собираем историю попыток в моноширинном блоке ---
     lines = []
-    for prev in cg["guesses"]:
-        fb = make_feedback(secret, prev)
-        # один пробел в начале, два пробела между жирными буквами
-        spaced = " " + "  ".join(f"**{ch.upper()}**" for ch in prev)
+    for gw in cg["guesses"]:
+        fb = make_feedback(secret, gw)
+        # один пробел в начале, два между буквами
+        spaced = " " + "  ".join(ch.upper() for ch in gw)
         lines.append(f"{fb}\n{spaced}")
 
-    text = "\n\n".join(lines)
-    await update.message.reply_text(text, parse_mode="Markdown")
+    # склеиваем с двойными переводами строки и оборачиваем в <pre>
+    block = "<pre>" + "\n\n".join(lines) + "</pre>"
+
+    # отправляем как HTML, чтобы <pre> сработал
+    await update.message.reply_text(block, parse_mode="HTML")
 
     # ——— проверяем победу ———
     if guess == secret:
