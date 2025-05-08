@@ -189,39 +189,38 @@ def update_user_activity(user) -> None:
 
 def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
     """
-    Для каждой буквы возвращает одно из:
-      - "green"  (если буква когда-либо была 🟩)
-      - "yellow" (если буква когда-либо была 🟨, и не была 🟩)
-      - "red"    (если буква была ⬜/не встречалась в секрете, и не была ни 🟩, ни 🟨)
+    Для каждой буквы возвращает:
+      - "green"  если была 🟩
+      - "yellow" если была 🟨 (и не была 🟩)
+      - "red"    если была ⬜ (и не была ни 🟩, ни 🟨)
     """
-    status: dict[str, str] = {}
+    status: dict[str,str] = {}
     for guess in guesses:
-        # сначала делаем per‐position feedback
-        fb: list[str] = []
-        secret_chars = list(secret)
-        # зелёные
-        for i, ch in enumerate(guess):
+        fb = [] 
+        s_chars = list(secret)
+        # сначала зелёные
+        for i,ch in enumerate(guess):
             if secret[i] == ch:
                 fb.append("🟩")
-                secret_chars[i] = None
+                s_chars[i] = None
             else:
                 fb.append(None)
-        # жёлтые/красные
-        for i, ch in enumerate(guess):
+        # затем жёлтые/красные
+        for i,ch in enumerate(guess):
             if fb[i] is None:
-                if ch in secret_chars:
+                if ch in s_chars:
                     fb[i] = "🟨"
-                    secret_chars[secret_chars.index(ch)] = None
+                    s_chars[s_chars.index(ch)] = None
                 else:
                     fb[i] = "⬜"
         # обновляем глобальный статус
-        for ch, sym in zip(guess, fb):
+        for ch,sym in zip(guess, fb):
             prev = status.get(ch)
             if sym == "🟩":
                 status[ch] = "green"
             elif sym == "🟨" and prev != "green":
                 status[ch] = "yellow"
-            elif sym == "⬜" and prev not in ("green", "yellow"):
+            elif sym == "⬜" and prev not in ("green","yellow"):
                 status[ch] = "red"
     return status
 
@@ -239,37 +238,33 @@ def render_full_board_with_keyboard(
     total_rows: int = 6,
     max_width_px: int = 1080
 ) -> BytesIO:
-    padding       = 8
-    board_default = 80
+    padding     = 8
+    board_def   = 80
+    cols        = len(secret)
+    total_pad   = (cols + 1) * padding
 
-    cols      = len(secret)
-    total_pad = (cols + 1) * padding
-
-    # Размер квадратика для доски (впись в max_width_px)
-    board_sq = min(board_default, (max_width_px - total_pad) // cols)
+    # Размер квадратика доски
+    board_sq = min(board_def, (max_width_px - total_pad) // cols)
     board_sq = max(20, board_sq)
 
     board_w  = cols * board_sq + total_pad
     board_h  = total_rows * board_sq + (total_rows + 1) * padding
 
-    # Параметры клавиатуры
+    # Квадратик клавиатуры (можно взять чуть меньше, но возьмём тот же)
+    kb_sq = board_sq
     kb_rows = len(KB_LAYOUT)
-    kb_cols = max(len(r) for r in KB_LAYOUT)
-    kb_square = min(board_sq, (board_w - (kb_cols + 1)*padding)//kb_cols)
-    kb_square = max(20, kb_square)
-    kb_w = kb_cols * kb_square + (kb_cols + 1)*padding
-    # Центрируем клавиатуру под доской
-    kb_xoff = (board_w - kb_w) // 2
+    img_h = board_h + kb_rows * kb_sq + (kb_rows + 1) * padding
 
-    total_h = board_h + kb_rows * kb_square + (kb_rows + 1) * padding
-
-    img  = Image.new("RGB", (board_w, total_h), (30, 30, 30))
-    draw = ImageDraw.Draw(img)
+    # Шрифт
     font = ImageFont.truetype("DejaVuSans-Bold.ttf", int(board_sq * 0.6))
+
+    img  = Image.new("RGB", (board_w, img_h), (30,30,30))
+    draw = ImageDraw.Draw(img)
 
     # --- Рисуем доску ---
     for r in range(total_rows):
-        y0 = padding + r*(board_sq + padding)
+        y0 = padding + r * (board_sq + padding)
+
         if r < len(guesses):
             guess = guesses[r]
             fb    = make_feedback(secret, guess)  # 🟩🟨⬜
@@ -278,20 +273,23 @@ def render_full_board_with_keyboard(
             fb    = [None] * cols
 
         for c in range(cols):
-            x0, x1 = padding + c*(board_sq+padding), padding + c*(board_sq+padding) + board_sq
+            x0 = padding + c * (board_sq + padding)
+            x1 = x0 + board_sq
             y1 = y0 + board_sq
 
-            # фон: зелёный, жёлтый или белый
+            # цвет квадрата
             if fb[c] == "🟩":
-                bg = (106, 170, 100)
+                bg = (106,170,100)
             elif fb[c] == "🟨":
-                bg = (201, 180,  88)
+                bg = (201,180,88)
+            elif fb[c] == "⬜":
+                bg = (128,128,128)  # серый для неверных букв
             else:
-                bg = (255, 255, 255)
+                bg = (255,255,255)  # чистый белый
 
-            draw.rectangle([x0, y0, x1, y1], fill=bg, outline=(0,0,0), width=2)
+            draw.rectangle([x0,y0,x1,y1], fill=bg, outline=(0,0,0), width=2)
 
-            # буква только если есть guess
+            # буква, если она есть
             if guess:
                 ch = guess[c].upper()
                 tc = (0,0,0) if bg==(255,255,255) else (255,255,255)
@@ -301,34 +299,39 @@ def render_full_board_with_keyboard(
                 ty = y0 + (board_sq - h)/2
                 draw.text((tx,ty), ch, font=font, fill=tc)
 
-    # --- Вычисляем статус букв для клавиатуры ---
+    # --- Рисуем мини-клавиатуру ---
     letter_status = compute_letter_status(secret, guesses)
-    # статус: "green", "yellow", "red" (не в слове), или absent
+    for row_idx, row in enumerate(KB_LAYOUT):
+        # динамический сдвиг по X, чтобы центрировать каждую строку
+        row_len     = len(row)
+        row_pad     = (row_len + 1) * padding
+        row_width   = row_len * kb_sq + row_pad
+        x_offset    = (board_w - row_width) // 2
+        y0          = board_h + padding + row_idx * (kb_sq + padding)
 
-    # --- Рисуем клавиатуру ---
-    for kr, row in enumerate(KB_LAYOUT):
-        y0 = board_h + padding + kr*(kb_square + padding)
-        for kc, ch in enumerate(row):
-            x0 = kb_xoff + padding + kc*(kb_square + padding)
-            x1, y1 = x0 + kb_square, y0 + kb_square
+        for i, ch in enumerate(row):
+            x0 = x_offset + padding + i * (kb_sq + padding)
+            x1 = x0 + kb_sq
+            y1 = y0 + kb_sq
 
-            st = letter_status.get(ch, "absent")
+            st = letter_status.get(ch, None)
             if st == "green":
-                bg = (106, 170, 100)
+                bg = (106,170,100)
             elif st == "yellow":
-                bg = (201, 180,  88)
+                bg = (201,180,88)
             elif st == "red":
-                bg = (128, 128, 128)   # серый для использованных не в слове
+                bg = (128,128,128)
             else:
-                bg = (255, 255, 255)   # белый для неиспользованных
+                bg = (255,255,255)
 
-            draw.rectangle([x0, y0, x1, y1], fill=bg, outline=(0,0,0), width=1)
+            draw.rectangle([x0,y0,x1,y1], fill=bg, outline=(0,0,0), width=1)
             tc = (0,0,0) if bg==(255,255,255) else (255,255,255)
+
             letter = ch.upper()
             bbox = draw.textbbox((0,0), letter, font=font)
             w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-            tx = x0 + (kb_square - w)/2
-            ty = y0 + (kb_square - h)/2
+            tx = x0 + (kb_sq - w)/2
+            ty = y0 + (kb_sq - h)/2
             draw.text((tx,ty), letter, font=font, fill=tc)
 
     buf = BytesIO()
@@ -554,15 +557,15 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store   = load_store()
     user    = store["users"].setdefault(user_id, {
         "first_name": update.effective_user.first_name,
-        "stats": {"games_played":0,"wins":0,"losses":0}
+        "stats": {"games_played": 0, "wins": 0, "losses": 0}
     })
 
-    # Обновляем last_seen
+    # Обновляем время последнего визита
     user["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
 
-    # Проверяем активную игру
+    # Проверяем, есть ли активная игра
     if "current_game" not in user:
-        await update.message.reply_text("Нет активной игре, начни /play")
+        await update.message.reply_text("Нет активной игры, начни /play")
         return ConversationHandler.END
 
     cg     = user["current_game"]
@@ -580,7 +583,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["attempts"] += 1
     save_store(store)
 
-    # Рендерим доску + мини-клавиатуру
+    # Рисуем всю доску из 6 строк + мини-клавиатуру снизу
     img_buf = render_full_board_with_keyboard(cg["guesses"], secret, total_rows=6)
     await update.message.reply_photo(
         photo=InputFile(img_buf, filename="wordle_board.png"),
@@ -646,7 +649,6 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Игра продолжается
     return GUESSING
-
 
 async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Команды /start и /play не работают во время игры — сначала /reset.")
