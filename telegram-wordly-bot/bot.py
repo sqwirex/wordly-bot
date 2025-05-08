@@ -52,7 +52,6 @@ async def set_commands(app):
         [
             BotCommand("start",         "Показать приветствие"),
             BotCommand("play",          "Начать новую игру"),
-            BotCommand("my_letters",    "Статус букв в игре"),
             BotCommand("hint",    "Подсказка"),
             BotCommand("reset",         "Сбросить игру"),
             BotCommand("my_stats",      "Ваша статистика"),
@@ -208,7 +207,7 @@ WORDLIST = sorted(
     )
 )
 
-GREEN, YELLOW, RED, UNK = "🟩", "🟨", "🟥", "⬜"
+GREEN, YELLOW, RED = "🟩", "🟨", "🟥"
 
 def make_feedback(secret: str, guess: str) -> str:
     fb = [None] * len(guess)
@@ -228,46 +227,6 @@ def make_feedback(secret: str, guess: str) -> str:
                 fb[i] = RED
     return "".join(fb)
 
-def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
-    """
-    Возвращает для каждой буквы одно из "green", "yellow" или "red",
-    по всем вашим попыткам в guesses.
-    """
-    status: dict[str,str] = {}
-    for guess in guesses:
-        # сперва сделаем per‐position feedback точно как в Wordle:
-        fb = []                 # список символов 🟩🟨🟥
-        secret_chars = list(secret)
-        # 1) зелёные
-        for i, ch in enumerate(guess):
-            if secret[i] == ch:
-                fb.append(GREEN)
-                secret_chars[i] = None
-            else:
-                fb.append(None)
-        # 2) жёлтые/красные
-        for i, ch in enumerate(guess):
-            if fb[i] is None:
-                if ch in secret_chars:
-                    fb[i] = YELLOW
-                    secret_chars[secret_chars.index(ch)] = None
-                else:
-                    fb[i] = RED
-
-        # теперь обновляем глобальный status по буквам:
-        for ch, sym in zip(guess, fb):
-            prev = status.get(ch)
-            # green перекрывает всё
-            if sym == GREEN:
-                status[ch] = "green"
-            # yellow — если раньше не было green
-            elif sym == YELLOW and prev != "green":
-                status[ch] = "yellow"
-            # red — только если ранее не было ни green, ни yellow
-            elif sym == RED and prev not in ("green","yellow"):
-                status[ch] = "red"
-
-    return status
 
 # --- Обработчики команд ---
 
@@ -339,15 +298,6 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def _delete_message_job(context: ContextTypes.DEFAULT_TYPE):
-    job_ctx = context.job.context
-    chat_id, message_id = job_ctx["chat_id"], job_ctx["message_id"]
-    try:
-        await context.bot.delete_message(chat_id, message_id)
-    except:
-        pass
-
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     store = load_store()
@@ -371,7 +321,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Привет! Я Wordle Bot — угадай слово за 6 попыток.\n"
         "https://github.com/sqwirex/wordle-bot - ссылка на репозиторий с кодом бота\n\n"
         "/play — начать или продолжить игру\n"
-        "/my_letters — показать статус букв во время игры\n"
         "/hint — дает слово в подсказку, если вы затрудняетесь ответить " \
         "(случайное слово в котором совпадают некоторые буквы с загаданным)\n"
         "/reset — сбросить текущую игру\n"
@@ -461,7 +410,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Обновляем last_seen
     user_entry["last_seen_msk"] = datetime.now(ZoneInfo("Europe/Moscow")).isoformat()
 
-    # Если по какой‑то причине current_game отсутствует — инициируем новую
+    # Если нет активной игры — просим стартовать
     if "current_game" not in user_entry:
         await update.message.reply_text("Нет активной игры, начни /play")
         return ConversationHandler.END
@@ -480,58 +429,67 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cg["guesses"].append(guess)
     cg["attempts"] += 1
 
-    # Фидбек
-    fb = make_feedback(secret, guess)       # например "🟨🟩🟥🟥🟥🟥"
-    letters = " ".join(ch.upper() for ch in guess)  # "К О Р О В А"
+    # Формируем текст для всех попыток
+    lines = []
+    for prev in cg["guesses"]:
+        fb = make_feedback(secret, prev)
+        # один пробел в начале, два пробела между жирными буквами
+        spaced = " " + "  ".join(f"**{ch.upper()}**" for ch in prev)
+        lines.append(f"{fb}\n{spaced}")
 
-    # отправляем всё одним сообщением
-    await update.message.reply_text(f"{fb}\n{letters}")
+    text = "\n\n".join(lines)
+    await update.message.reply_text(text, parse_mode="Markdown")
 
-    # Победа
+    # ——— проверяем победу ———
     if guess == secret:
-        # Обновляем пользовательскую статистику
         user_entry["stats"]["games_played"] += 1
         user_entry["stats"]["wins"] += 1
-        user_entry["stats"]["win_rate"] = user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
+        user_entry["stats"]["win_rate"] = (
+            user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
+        )
 
-        # Обновляем глобальную статистику
-        store["global"]["total_games"]   = store["global"].get("total_games", 0) + 1
-        store["global"]["total_wins"]    = store["global"].get("total_wins", 0) + 1
-        store["global"]["win_rate"] = store["global"]["total_wins"] / store["global"]["total_games"]
+        store["global"]["total_games"] += 1
+        store["global"]["total_wins"] += 1
+        store["global"]["win_rate"] = (
+            store["global"]["total_wins"] / store["global"]["total_games"]
+        )
 
+        # обновляем топ‑игрока
         top_uid, top_data = max(
             store["users"].items(),
             key=lambda kv: kv[1].get("stats", {}).get("wins", 0)
         )
-
         store["global"]["top_player"] = {
-            "user_id":   top_uid,
-            "username":  top_data.get("username") or top_data.get("first_name", ""),
-            "wins":      top_data["stats"]["wins"]
+            "user_id": top_uid,
+            "username": top_data.get("username") or top_data.get("first_name", ""),
+            "wins": top_data["stats"]["wins"]
         }
-        
+
         await update.message.reply_text(
-            f"🎉 Поздравляю! Угадал за {cg['attempts']} {'попытка' if cg['attempts']==1 else 'попытки' if 2<=cg['attempts']<=4 else 'попыток'}.\n"
+            f"🎉 Поздравляю! Угадал за {cg['attempts']} "
+            f"{'попытка' if cg['attempts']==1 else 'попытки' if 2<=cg['attempts']<=4 else 'попыток'}.\n"
             "Чтобы сыграть вновь, введи команду /play."
         )
 
-        # Удаляем текущее состояние игры
         del user_entry["current_game"]
         context.user_data.pop("game_active", None)
         context.user_data["just_done"] = True
         save_store(store)
         return ConversationHandler.END
 
-    # Поражение
+    # ——— проверяем поражение ———
     if cg["attempts"] >= 6:
         user_entry["stats"]["games_played"] += 1
         user_entry["stats"]["losses"] += 1
-        user_entry["stats"]["win_rate"] = user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
+        user_entry["stats"]["win_rate"] = (
+            user_entry["stats"]["wins"] / user_entry["stats"]["games_played"]
+        )
 
-        store["global"]["total_games"]   = store["global"].get("total_games", 0) + 1
-        store["global"]["total_losses"]  = store["global"].get("total_losses", 0) + 1
-        if store["global"]["total_games"]:
-            store["global"]["win_rate"] = store["global"]["total_wins"] / store["global"]["total_games"]
+        store["global"]["total_games"] += 1
+        store["global"]["total_losses"] += 1
+        store["global"]["win_rate"] = (
+            store["global"]["total_wins"] / store["global"]["total_games"]
+        )
 
         await update.message.reply_text(
             f"💔 Попытки закончились. Было слово «{secret}».\n"
@@ -544,7 +502,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_store(store)
         return ConversationHandler.END
 
-    # Игра продолжается — сохраняем прогресс и ждём следующей догадки
+    # Игра продолжается — сохраняем и ждём следующей догадки
     save_store(store)
     return GUESSING
 
@@ -557,46 +515,6 @@ async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ignore_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Команды /start и /play не работают во время игры — сначала /reset.")
     return GUESSING
-
-
-async def my_letters(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    update_user_activity(update.effective_user)
-    store = load_store()
-    uid = str(update.effective_user.id)
-    user = store["users"].get(uid)
-    if not user or "current_game" not in user:
-        await update.message.reply_text("Эту команду можно использовать только во время игры.")
-        return GUESSING
-
-    cg = user["current_game"]
-    secret = cg["secret"]
-    guesses = cg.get("guesses", [])
-
-    if not guesses:
-        await update.message.reply_text("Пока нет ни одной попытки.")
-        return GUESSING
-
-    lines = []
-    for g in guesses:
-        fb = make_feedback(secret, g)
-        # сначала квадраты, потом само слово
-        lines.append(f"{fb}\n{g}")
-
-    await update.message.reply_text("\n\n".join(lines))
-    return GUESSING
-
-
-async def my_letters_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    update_user_activity(update.effective_user)
-    state = context.user_data.get("state")
-    if state == ASK_LENGTH:
-        # мы ещё в фазе выбора длины
-        await update.message.reply_text("Нужно ввести число от 4 до 11.")
-        return ASK_LENGTH
-    else:
-        # если вообще ни в одном ConversationHandler-е
-        await update.message.reply_text("Эту команду можно использовать только во время игры.")
-        return ConversationHandler.END
 
 
 async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1075,7 +993,6 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_length),
                 CommandHandler("start", ignore_ask),
                 CommandHandler("play", ignore_ask),
-		        CommandHandler("my_letters", my_letters_not_allowed),
                 CommandHandler("hint", hint_not_allowed),
                 CommandHandler("reset", reset),
                 CommandHandler("my_stats", only_outside_game),
@@ -1086,7 +1003,6 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_guess),
                 CommandHandler("start", ignore_guess),
 		        CommandHandler("play", ignore_guess),
-		        CommandHandler("my_letters", my_letters),
                 CommandHandler("hint", hint),
                 CommandHandler("reset", reset),
                 CommandHandler("my_stats", only_outside_game),
@@ -1134,7 +1050,6 @@ def main():
 
     # Глобальные
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("my_letters", my_letters_not_allowed))
     app.add_handler(CommandHandler("hint", hint_not_allowed))
     app.add_handler(CommandHandler("reset", reset_global))
     app.add_handler(CommandHandler("my_stats", my_stats))
