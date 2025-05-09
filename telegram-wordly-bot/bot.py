@@ -152,17 +152,17 @@ def save_store(store: dict) -> None:
 
 def update_user_activity(user) -> None:
     """
-    Создаёт или обновляет запись user в store['users'], добавляя:
+    Создает или обновляет запись user в store['users'], добавляя:
     - first_name, last_name, username
     - is_bot, is_premium, language_code
     - last_seen_msk (по московскому времени)
-    - stats (если ещё нет): games_played, wins, losses, win rate
+    - stats (если еще нет): games_played, wins, losses, win rate
     """
     store = load_store()
     uid = str(user.id)
     users = store["users"]
 
-    # Если пользователь впервые — создаём базовую запись
+    # Если пользователь впервые — создаем базовую запись
     if uid not in users:
         users[uid] = {
             "first_name": user.first_name,
@@ -188,8 +188,8 @@ def update_user_activity(user) -> None:
 
 
 def normalize(text: str) -> str:
-    # переводим всё в нижний регистр и убираем «ё»
-    return text.strip().lower().replace("ё", "е")
+    # переводим все в нижний регистр и убираем «е»
+    return text.strip().lower().replace("е", "е")
 
 
 def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
@@ -203,14 +203,14 @@ def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
     for guess in guesses:
         fb = [] 
         s_chars = list(secret)
-        # сначала зелёные
+        # сначала зеленые
         for i,ch in enumerate(guess):
             if secret[i] == ch:
                 fb.append("🟩")
                 s_chars[i] = None
             else:
                 fb.append(None)
-        # затем жёлтые/красные
+        # затем желтые/красные
         for i,ch in enumerate(guess):
             if fb[i] is None:
                 if ch in s_chars:
@@ -378,12 +378,12 @@ GREEN, YELLOW, WHITE = "🟩", "🟨", "⬜"
 def make_feedback(secret: str, guess: str) -> str:
     fb = [None] * len(guess)
     secret_chars = list(secret)
-    # 1) зелёные
+    # 1) зеленые
     for i, ch in enumerate(guess):
         if secret[i] == ch:
             fb[i] = GREEN
             secret_chars[i] = None
-    # 2) жёлтые/красные
+    # 2) желтые/красные
     for i, ch in enumerate(guess):
         if fb[i] is None:
             if ch in secret_chars:
@@ -398,8 +398,8 @@ def make_feedback(secret: str, guess: str) -> str:
 
 async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
     """
-    Периодически (и сразу при старте) шлёт user_activity.json администратору.
-    Если файл слишком большой, шлёт его как документ.
+    Периодически (и сразу при старте) шлет user_activity.json администратору.
+    Если файл слишком большой, шлет его как документ.
     """
     ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
     activity_path = USER_FILE
@@ -443,7 +443,7 @@ async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
                     chat_id=int(uid),
                     text=(
                         f"Я вернулся из спячки!\n"
-                        f"⏳ У вас есть незавершённая игра:\n"
+                        f"⏳ У вас есть незавершенная игра:\n"
                         f"{length}-буквенное слово, вы на попытке {attempts}.\n"
                         "Нажмите /play или /start, чтобы продолжить!"
                     )
@@ -495,8 +495,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/feedback — если ты встретил слово, которое не должно быть в словаре или не существует, введи его в Черный список, " \
         "если же наоборот, ты вбил слово, а бот его не признает, но ты уверен что оно существует, отправляй его в Белый список. " \
         "Администратор бота рассмотрит твое предложение и добавит в ближайшем обновлении, если оно действительно подходит!\n\n"
-        "Только не забывай: я ещё учусь и не знаю некоторых слов!\n"
-        "Не расстраивайся, если я ругаюсь на твоё слово — мне есть чему учиться :)\n\n"
+        "Только не забывай: я еще учусь и не знаю некоторых слов!\n"
+        "Не расстраивайся, если я ругаюсь на твое слово — мне есть чему учиться :)\n\n"
         "Кстати, иногда я могу «выключаться», потому что живу в контейнере!\n"
         "Если я не отвечаю — попробуй позже и нажми /play или /start, чтобы продолжить прервавшуюся игру.\n\n"
     )
@@ -536,7 +536,7 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     length = int(text)
     candidates = [w for w in WORDLIST if len(w) == length]
     if not candidates:
-        await update.message.reply_text("Не нашёл слов такой длины. Попробуй ещё:")
+        await update.message.reply_text("Не нашел слов такой длины. Попробуй еще:")
         return ASK_LENGTH
 
     secret = random.choice(candidates)
@@ -596,7 +596,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_store(store)
 
     # Рендерим доску из 6 строк + мини-клавиатуру снизу.
-    # Клавиатура будет крупнее для слов ≥8 букв, чуть меньше для 7 и ещё меньше для 4–5.
+    # Клавиатура будет крупнее для слов ≥8 букв, чуть меньше для 7 и еще меньше для 4–5.
     img_buf = render_full_board_with_keyboard(
         guesses=cg["guesses"],
         secret=secret,
@@ -690,7 +690,7 @@ async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cg = user_entry["current_game"]
 
-    # Если подсказка уже взята — не даём ещё одну
+    # Если подсказка уже взята — не даем еще одну
     if cg.get("hint_used", False):
         await update.message.reply_text("Подсказка уже использована в этой игре.")
         return GUESSING
@@ -711,7 +711,7 @@ async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(w) != length or w == secret:
             continue
         w_counter = Counter(w)
-        # пересечение счётчиков по минимуму
+        # пересечение счетчиков по минимуму
         common = sum(min(secret_counter[ch], w_counter[ch]) for ch in w_counter)
         if common == num_letters:
             candidates.append(w)
@@ -812,7 +812,7 @@ async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def only_outside_game(update, context):
     await update.message.reply_text("Эту команду можно использовать только вне игры.")
-    # вернём то состояние, в котором сейчас юзер:
+    # вернем то состояние, в котором сейчас юзер:
     return context.user_data.get("state", ConversationHandler.END)
 
 
@@ -822,21 +822,21 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = store["users"].get(str(update.effective_user.id), {})
     if "current_game" in u:
         await update.message.reply_text(
-            "Нельзя отправлять фидбек пока идёт игра. Сначала закончи играть или нажми /reset.",
+            "Нельзя отправлять фидбек пока идет игра. Сначала закончи играть или нажми /reset.",
             reply_markup=ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
     
     if context.user_data.get("game_active"):
         await update.message.reply_text(
-            "Нельзя отправлять фидбек пока идёт игра. Сначала закончи играть или нажми /reset.",
+            "Нельзя отправлять фидбек пока идет игра. Сначала закончи играть или нажми /reset.",
             reply_markup=ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
 
     # предлагаем выбрать список
     keyboard = [
-        ["Чёрный список", "Белый список"],
+        ["Черный список", "Белый список"],
         ["Отмена"]
     ]
     markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
@@ -856,12 +856,12 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["just_done"] = True
         return ConversationHandler.END
 
-    if text not in ("Чёрный список", "Белый список"):
+    if text not in ("Черный список", "Белый список"):
         await update.message.reply_text("Пожалуйста, нажимайте одну из кнопок.")
         return FEEDBACK_CHOOSE
 
-    # куда кладём
-    context.user_data["fb_target"] = "black" if text == "Чёрный список" else "white"
+    # куда кладем
+    context.user_data["fb_target"] = "black" if text == "Черный список" else "white"
     # убираем клавиатуру и спрашиваем слово
     await update.message.reply_text(
         "Введите слово для предложения:", reply_markup=ReplyKeyboardRemove()
@@ -891,11 +891,11 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if word not in WORDLIST:
             resp = "Нельзя: такого слова нет в основном словаре."
         elif word in vocabulary.get("black_list", []) or word in suggestions["black"]:
-            resp = "Нельзя: слово уже в чёрном списке."
+            resp = "Нельзя: слово уже в черном списке."
         else:
             suggestions["black"].append(word)
             save_suggestions(suggestions)
-            resp = "Спасибо, добавил в предложения для чёрного списка."
+            resp = "Спасибо, добавил в предложения для черного списка."
     else:  # white
         # Сначала проверяем длину
         if not (4 <= len(word) <= 11):
@@ -907,7 +907,7 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif word in vocabulary.get("white_list", []) or word in suggestions["white"]:
             resp = "Нельзя: слово уже в белом списке."
         else:
-            # Всё ок — добавляем
+            # Все ок — добавляем
             suggestions["white"].append(word)
             save_suggestions(suggestions)
             resp = "Спасибо, добавил в предложения для белого списка."
@@ -927,7 +927,7 @@ async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # любой посторонний ввод заглушаем
     await update.message.reply_text(
-        "Сейчас идёт ввод для фидбека, нельзя использовать команды."
+        "Сейчас идет ввод для фидбека, нельзя использовать команды."
     )
     # возвращаемся в текущее состояние
     return context.user_data.get("feedback_state", FEEDBACK_CHOOSE)
@@ -958,7 +958,7 @@ async def dict_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = "\n".join(WORDLIST)
     count = len(WORDLIST)
 
-    # Упаковываем в BytesIO, задаём имя файла
+    # Упаковываем в BytesIO, задаем имя файла
     bio = BytesIO(data.encode("utf-8"))
     bio.name = "wordlist.txt"
 
@@ -1002,7 +1002,7 @@ async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
     black = sugg.get("black", [])
     white = sugg.get("white", [])
     text = (
-        "Предложения для чёрного списка:\n"
+        "Предложения для черного списка:\n"
         + (", ".join(f'"{w}"' for w in black) if black else "— пусто")
         + "\n\nПредложения для белого списка:\n"
         + (", ".join(f'"{w}"' for w in white) if white else "— пусто")
@@ -1022,7 +1022,7 @@ async def suggestions_remove_start(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text("Эту команду можно использовать только вне игры.")
         return ConversationHandler.END
 
-    # Если всё ок — запускаем диалог удаления
+    # Если все ок — запускаем диалог удаления
     await update.message.reply_text(
         "Введи, что удалить (формат):\n"
         "black: слово1, слово2\n"
@@ -1062,7 +1062,7 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
     # формируем ответ
     parts = []
     if removed["black"]:
-        parts.append(f'Из чёрного удалено: {", ".join(removed["black"])}')
+        parts.append(f'Из черного удалено: {", ".join(removed["black"])}')
     if removed["white"]:
         parts.append(f'Из белого удалено: {", ".join(removed["white"])}')
     if not parts:
@@ -1084,7 +1084,7 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    store = load_store()      # берём тех, кого мы когда-то записали
+    store = load_store()      # берем тех, кого мы когда-то записали
     failed = []
     for uid in store["users"].keys():
         try:
