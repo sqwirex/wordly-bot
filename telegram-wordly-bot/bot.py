@@ -875,47 +875,49 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = normalize(update.message.text)
     target = context.user_data["fb_target"]
 
-    # Проверка на размер файла предложений
     if SUGGESTIONS_FILE.exists() and SUGGESTIONS_FILE.stat().st_size >= 1_000_000:
         await update.message.reply_text(
             "Прости, сейчас нельзя добавить новое слово — файл предложений уже слишком большой."
         )
+        # Сбрасываем режим фидбека
         context.user_data.pop("in_feedback", None)
         context.user_data["just_done"] = True
         return ConversationHandler.END
-
+    
+    # подтянем свежие предложения
     suggestions = load_suggestions()
 
-    # Чёрный список
     if target == "black":
         if word not in WORDLIST:
-            await update.message.reply_text("Нельзя: такого слова нет в основном словаре.")
+            resp = "Нельзя: такого слова нет в основном словаре."
             return FEEDBACK_CHOOSE
-        if word in vocabulary.get("black_list", []) or word in suggestions["black"]:
-            await update.message.reply_text("Нельзя: слово уже в чёрном списке.")
+        elif word in vocabulary.get("black_list", []) or word in suggestions["black"]:
+            resp = "Нельзя: слово уже в черном списке."
             return FEEDBACK_CHOOSE
-
-        suggestions["black"].append(word)
-        save_suggestions(suggestions)
-        await update.message.reply_text("Спасибо, добавил в предложения для чёрного списка.")
-
-    # Белый список
-    else:
+        else:
+            suggestions["black"].append(word)
+            save_suggestions(suggestions)
+            resp = "Спасибо, добавил в предложения для черного списка."
+    else:  # white
+        # Сначала проверяем длину
         if not (4 <= len(word) <= 11):
-            await update.message.reply_text("Нельзя: длина слова должна быть от 4 до 11 символов.")
+            resp = "Нельзя: длина слова должна быть от 4 до 11 символов."
             return FEEDBACK_CHOOSE
-        if word in WORDLIST:
-            await update.message.reply_text("Нельзя: такое слово уже есть в основном словаре.")
+        # Потом — что слово уже есть в основном словаре
+        elif word in WORDLIST:
+            resp = "Нельзя: такое слово уже есть в основном словаре."
             return FEEDBACK_CHOOSE
-        if word in vocabulary.get("white_list", []) or word in suggestions["white"]:
-            await update.message.reply_text("Нельзя: слово уже в белом списке.")
+        # Потом — что его уже предлагали
+        elif word in vocabulary.get("white_list", []) or word in suggestions["white"]:
+            resp = "Нельзя: слово уже в белом списке."
             return FEEDBACK_CHOOSE
+        else:
+            # Все ок — добавляем
+            suggestions["white"].append(word)
+            save_suggestions(suggestions)
+            resp = "Спасибо, добавил в предложения для белого списка."
 
-        suggestions["white"].append(word)
-        save_suggestions(suggestions)
-        await update.message.reply_text("Спасибо, добавил в предложения для белого списка.")
-
-    # Завершаем диалог
+    await update.message.reply_text(resp)
     context.user_data.pop("in_feedback", None)
     context.user_data["just_done"] = True
     return ConversationHandler.END
