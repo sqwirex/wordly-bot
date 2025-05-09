@@ -187,6 +187,11 @@ def update_user_activity(user) -> None:
     save_store(store)
 
 
+def normalize(text: str) -> str:
+    # переводим всё в нижний регистр и убираем «ё»
+    return text.strip().lower().replace("ё", "е")
+
+
 def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
     """
     Для каждой буквы возвращает:
@@ -494,7 +499,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Не расстраивайся, если я ругаюсь на твоё слово — мне есть чему учиться :)\n\n"
         "Кстати, иногда я могу «выключаться», потому что живу в контейнере!\n"
         "Если я не отвечаю — попробуй позже и нажми /play или /start, чтобы продолжить прервавшуюся игру.\n\n"
-        "И еще, не забывай, буква Ё ≠ Е. Удачи!"
     )
 
 
@@ -577,7 +581,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     cg     = user["current_game"]
-    guess  = update.message.text.strip().lower()
+    guess = normalize(update.message.text)
     secret = cg["secret"]
     length = len(secret)
 
@@ -868,7 +872,7 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    word = update.message.text.strip().lower()
+    word = normalize(update.message.text)
     target = context.user_data["fb_target"]
 
     if SUGGESTIONS_FILE.exists() and SUGGESTIONS_FILE.stat().st_size >= 1_000_000:
