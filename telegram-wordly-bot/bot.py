@@ -355,23 +355,20 @@ def render_full_board_with_keyboard(
 # --- Константы и словарь ---
 ASK_LENGTH, GUESSING, FEEDBACK_CHOOSE, FEEDBACK_WORD, REMOVE_INPUT, BROADCAST= range(6)
 
-VOCAB_FILE = Path("vocabulary.json")
-with VOCAB_FILE.open("r", encoding="utf-8") as f:
-    vocabulary = json.load(f)
-BLACK_LIST = set(vocabulary.get("black_list", []))
-WHITE_LIST = set(vocabulary.get("white_list", []))
+# --- Загрузка и сортировка списка слов ---
 BASE_FILE = Path("base_words.json")
+
+# Читаем список слов из base_words.json
 with BASE_FILE.open("r", encoding="utf-8") as f:
-    BASE_WORDS = set(json.load(f))
-# Объединяем с белым списком, чтобы эти слова гарантированно присутствовали
-WORDLIST = sorted(
-    w for w in (BASE_WORDS | WHITE_LIST)
-    if (
-        w.isalpha()
-        and 4 <= len(w) <= 11
-        and w not in BLACK_LIST
-    )
-)
+    base_words = json.load(f)
+
+# Фильтруем по критериям: только буквы, длина 4–11 символов
+filtered = [w for w in base_words if w.isalpha() and 4 <= len(w) <= 11]
+
+# Сортируем список и записываем обратно в base_words.json
+WORDLIST = sorted(filtered)
+with BASE_FILE.open("w", encoding="utf-8") as f:
+    json.dump(WORDLIST, f, ensure_ascii=False, indent=2)
 
 GREEN, YELLOW, WHITE = "🟩", "🟨", "⬜"
 
