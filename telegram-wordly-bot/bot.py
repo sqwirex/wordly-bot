@@ -189,7 +189,7 @@ def update_user_activity(user) -> None:
 
 def normalize(text: str) -> str:
     # переводим все в нижний регистр и убираем «е»
-    return text.strip().lower().replace("е", "е")
+    return text.strip().lower().replace("ё", "е")
 
 
 def compute_letter_status(secret: str, guesses: list[str]) -> dict[str, str]:
