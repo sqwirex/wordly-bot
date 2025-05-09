@@ -247,14 +247,14 @@ def draw_rounded_gradient(
     x0, y0, x1, y1 = rect
     w, h = x1 - x0, y1 - y0
 
-    # градиент в отдельном слое
+    # создаём градиент в отдельном слое
     grad = Image.new("RGB", (w, h))
     gd   = ImageDraw.Draw(grad)
     for i in range(h):
         t = i / max(h - 1, 1)
         gd.line([(0, i), (w, i)], fill=lerp_color(top_color, bot_color, t))
 
-    # маска закруглённого прямоугольника
+    # маска для закруглённых углов
     mask = Image.new("L", (w, h), 0)
     md   = ImageDraw.Draw(mask)
     md.rounded_rectangle((0,0,w,h), radius=radius, fill=255)
@@ -280,7 +280,7 @@ def render_full_board_with_keyboard(
     board_w = cols * board_sq + total_pad
     board_h = total_rows * board_sq + (total_rows + 1) * padding
 
-    # размер клавиш
+    # масштаб клавиш
     if cols >= 8:
         factor = 0.6
     elif cols == 7:
@@ -296,11 +296,11 @@ def render_full_board_with_keyboard(
     kb_rows = len(KB_LAYOUT)
     img_h   = board_h + kb_rows * kb_sq + (kb_rows + 1) * padding
 
-    # обновлённые градиенты, серый стал темнее
+    # обновлённые градиенты (серый — светлее)
     gradients = {
         "green":  ((80,160,80),   (120,200,120)),
         "yellow": ((200,160,40),  (240,200,80)),
-        "wrong":  ((100,100,100), (60,60,60)),
+        "wrong":  ((220,220,220), (240,240,240)),
     }
 
     img  = Image.new("RGB", (board_w, img_h), (30,30,30))
@@ -308,20 +308,21 @@ def render_full_board_with_keyboard(
     font_board = ImageFont.truetype("DejaVuSans-Bold.ttf", int(board_sq * 0.6))
     font_kb    = ImageFont.truetype("DejaVuSans-Bold.ttf", int(kb_sq    * 0.6))
 
-    # игровая доска
+    # --- игровая доска ---
     for r in range(total_rows):
         y0 = padding + r * (board_sq + padding)
         guess = guesses[r] if r < len(guesses) else None
         fb    = make_feedback(secret, guess) if guess else [None]*cols
 
         for c in range(cols):
-            x0, y0_cell = padding + c*(board_sq+padding), y0
+            x0 = padding + c*(board_sq+padding)
             x1 = x0 + board_sq
-            y1 = y0_cell + board_sq
-            rect = (x0, y0_cell, x1, y1)
+            y1 = y0 + board_sq
+            rect = (x0, y0, x1, y1)
             sym  = fb[c]
 
             if sym is None:
+                # пустая клетка — просто белый фон
                 draw.rounded_rectangle(rect, radius=radius,
                                        fill=(255,255,255), outline=(0,0,0), width=2)
             else:
@@ -329,23 +330,24 @@ def render_full_board_with_keyboard(
                 top_col, bot_col = gradients[key]
                 draw_rounded_gradient(img, draw, rect, radius, top_col, bot_col)
 
+            # буква (поднимаем чуть выше центра)
             if guess:
                 ch = guess[c].upper()
                 bbox = draw.textbbox((0,0), ch, font=font_board)
-                w,h  = bbox[2]-bbox[0], bbox[3]-bbox[1]
-                tc   = (0,0,0) if sym is None else (255,255,255)
-                draw.text((x0 + (board_sq-w)/2, y0_cell + (board_sq-h)/2),
-                          ch, font=font_board, fill=tc)
+                w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
+                # вертикальная корректировка: сдвиг на 5% cell высоты
+                ty = y0 + (board_sq - h)/2 - board_sq*0.05
+                tc = (0,0,0) if sym is None else (255,255,255)
+                draw.text((x0 + (board_sq - w)/2, ty), ch, font=font_board, fill=tc)
 
-    # мини-клавиатура
+    # --- мини-клавиатура ---
     letter_status = compute_letter_status(secret, guesses)
     kb_radius = kb_sq // 6
 
     for ri, row in enumerate(KB_LAYOUT):
-        y0 = board_h + padding + ri * (kb_sq + padding)
+        y0      = board_h + padding + ri * (kb_sq + padding)
         row_len = len(row)
-        row_w   = row_len * kb_sq + (row_len + 1) * padding
-        x_off   = (board_w - row_w) // 2
+        x_off   = (board_w - (row_len*kb_sq + (row_len+1)*padding)) // 2
 
         for i, ch in enumerate(row):
             x0 = x_off + padding + i*(kb_sq+padding)
@@ -357,18 +359,18 @@ def render_full_board_with_keyboard(
             if st is None:
                 draw.rounded_rectangle(rect, radius=kb_radius,
                                        fill=(255,255,255), outline=(0,0,0), width=1)
-                tc = (0,0,0)
+                tc = (255,255,255)  # теперь белые буквы на белом
             else:
                 key = "green" if st=="green" else "yellow" if st=="yellow" else "wrong"
                 top_col, bot_col = gradients[key]
                 draw_rounded_gradient(img, draw, rect, kb_radius, top_col, bot_col)
-                tc = (255,255,255)  # всегда белые буквы на цветном
+                tc = (255,255,255)
 
-            letter = ch.upper()
-            bbox   = draw.textbbox((0,0), letter, font=font_kb)
-            w,h    = bbox[2]-bbox[0], bbox[3]-bbox[1]
-            draw.text((x0 + (kb_sq-w)/2, y0 + (kb_sq-h)/2),
-                      letter, font=font_kb, fill=tc)
+            # буква на клавиатуре чуть выше
+            bbox = draw.textbbox((0,0), ch.upper(), font=font_kb)
+            w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
+            ty   = y0 + (kb_sq - h)/2 - kb_sq*0.05
+            draw.text((x0 + (kb_sq - w)/2, ty), ch.upper(), font=font_kb, fill=tc)
 
     buf = BytesIO()
     img.save(buf, format="PNG")
