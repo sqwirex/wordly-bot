@@ -297,7 +297,7 @@ def render_full_board_with_keyboard(
     gradients = {
         "green":  ((80,160,80),   (120,200,120)),
         "yellow": ((200,160,40),  (240,200,80)),
-        "wrong":  ((140,140,140), (160,160,160)),
+        "wrong":  ((120,120,120), (140,140,140)),
     }
 
     img  = Image.new("RGB", (board_w, img_h), (30,30,30))
