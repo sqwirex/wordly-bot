@@ -294,11 +294,10 @@ def render_full_board_with_keyboard(
     kb_rows = len(KB_LAYOUT)
     img_h   = board_h + kb_rows * kb_sq + (kb_rows + 1) * padding
 
-    # обновлённые градиенты (серый — чуть темнее)
     gradients = {
         "green":  ((80,160,80),   (120,200,120)),
         "yellow": ((200,160,40),  (240,200,80)),
-        "wrong":  ((180,180,180), (200,200,200)),
+        "wrong":  ((140,140,140), (160,160,160)),
     }
 
     img  = Image.new("RGB", (board_w, img_h), (30,30,30))
@@ -320,7 +319,6 @@ def render_full_board_with_keyboard(
             sym  = fb[c]
 
             if sym is None:
-                # пустая клетка — белая заливка
                 draw.rounded_rectangle(rect, radius=radius,
                                        fill=(255,255,255), outline=(0,0,0), width=2)
             else:
@@ -332,7 +330,6 @@ def render_full_board_with_keyboard(
                 ch = guess[c].upper()
                 bbox = draw.textbbox((0,0), ch, font=font_board)
                 w, h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-                # текст чёрный на белом, белый иначе
                 tc = (0,0,0) if sym is None else (255,255,255)
                 ty = y0 + (board_sq - h)/2 - board_sq*0.05
                 draw.text((x0 + (board_sq - w)/2, ty), ch, font=font_board, fill=tc)
