@@ -890,8 +890,10 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target == "black":
         if word not in WORDLIST:
             resp = "Нельзя: такого слова нет в основном словаре."
+            return FEEDBACK_CHOOSE
         elif word in vocabulary.get("black_list", []) or word in suggestions["black"]:
             resp = "Нельзя: слово уже в черном списке."
+            return FEEDBACK_CHOOSE
         else:
             suggestions["black"].append(word)
             save_suggestions(suggestions)
@@ -900,12 +902,15 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Сначала проверяем длину
         if not (4 <= len(word) <= 11):
             resp = "Нельзя: длина слова должна быть от 4 до 11 символов."
+            return FEEDBACK_CHOOSE
         # Потом — что слово уже есть в основном словаре
         elif word in WORDLIST:
             resp = "Нельзя: такое слово уже есть в основном словаре."
+            return FEEDBACK_CHOOSE
         # Потом — что его уже предлагали
         elif word in vocabulary.get("white_list", []) or word in suggestions["white"]:
             resp = "Нельзя: слово уже в белом списке."
+            return FEEDBACK_CHOOSE
         else:
             # Все ок — добавляем
             suggestions["white"].append(word)
