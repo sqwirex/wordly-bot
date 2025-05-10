@@ -876,38 +876,34 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Прости, сейчас нельзя добавить новое слово — файл предложений уже слишком большой."
         )
-        # Сбрасываем режим фидбека
         context.user_data.pop("in_feedback", None)
         context.user_data["just_done"] = True
         return ConversationHandler.END
-    
-    # подтянем свежие предложения
+
     suggestions = load_suggestions()
 
+    # Черный список: добавляем, только если слово есть в словаре
     if target == "black":
-        if word not in WORDLIST:
-            resp = "Нельзя: такого слова нет в основном словаре."
-        elif word in vocabulary.get("black_list", []) or word in suggestions["black"]:
-            resp = "Нельзя: слово уже в черном списке."
-        else:
+        if word in WORDLIST:
             suggestions["black"].append(word)
             save_suggestions(suggestions)
-            resp = "Спасибо, добавил в предложения для черного списка."
-    else:  # white
-        # Сначала проверяем длину
-        if not (4 <= len(word) <= 11):
-            resp = "Нельзя: длина слова должна быть от 4 до 11 символов."
-        # Потом — что слово уже есть в основном словаре
-        elif word in WORDLIST:
-            resp = "Нельзя: такое слово уже есть в основном словаре."
-        # Потом — что его уже предлагали
-        elif word in vocabulary.get("white_list", []) or word in suggestions["white"]:
-            resp = "Нельзя: слово уже в белом списке."
+            resp = "Спасибо, добавил в предложения для чёрного списка."
         else:
-            # Все ок — добавляем
+            resp = "Нельзя: слово должно быть в основном словаре."
+
+    # Белый список: добавляем, только если слова нет в словаре и длина 4–11
+    else:
+        if 4 <= len(word) <= 11 and word not in WORDLIST:
             suggestions["white"].append(word)
             save_suggestions(suggestions)
             resp = "Спасибо, добавил в предложения для белого списка."
+        else:
+            if word in WORDLIST:
+                resp = "Нельзя: такое слово уже есть в основном словаре."
+            elif not (4 <= len(word) <= 11):
+                resp = "Нельзя: длина слова должна быть от 4 до 11 символов."
+            else:
+                resp = "Нельзя: слово должно быть вне основного словаря и из 4–11 букв."
 
     await update.message.reply_text(resp)
     context.user_data.pop("in_feedback", None)
