@@ -68,24 +68,36 @@ async def set_commands(app):
         scope=BotCommandScopeChat(chat_id=ADMIN_ID)
     )
 
-def load_suggestions() -> dict:
+
+def load_suggestions() -> dict[str, set[str]]:
+    """Возвращает {'black': set(...), 'white': set(...)} без дубликатов."""
     if not SUGGESTIONS_FILE.exists():
-        return {"black": [], "white": []}
+        return {"black": set(), "white": set()}
     raw = SUGGESTIONS_FILE.read_text("utf-8").strip()
     if not raw:
-        return {"black": [], "white": []}
+        return {"black": set(), "white": set()}
     try:
         data = json.loads(raw)
         return {
-            "black": list(data.get("black", [])),
-            "white": list(data.get("white", [])),
+            "black": set(data.get("black", [])),
+            "white": set(data.get("white", [])),
         }
     except json.JSONDecodeError:
-        return {"black": [], "white": []}
+        return {"black": set(), "white": set()}
 
-def save_suggestions(sugg: dict):
+
+
+def save_suggestions(sugg: dict[str, set[str]]):
+    """
+    Сохраняет suggestions, конвертируя множества в отсортированные списки.
+    """
+    out = {
+        "black": sorted(sugg["black"]),
+        "white": sorted(sugg["white"]),
+    }
     with SUGGESTIONS_FILE.open("w", encoding="utf-8") as f:
-        json.dump(sugg, f, ensure_ascii=False, indent=2)
+        json.dump(out, f, ensure_ascii=False, indent=2)
+
 
 # загружаем один раз при старте
 suggestions = load_suggestions()
@@ -885,7 +897,7 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Черный список: добавляем, только если слово есть в словаре
     if target == "black":
         if word in WORDLIST:
-            suggestions["black"].append(word)
+            suggestions["black"].add(word)
             save_suggestions(suggestions)
             resp = "Спасибо, добавил в предложения для чёрного списка."
         else:
@@ -894,7 +906,7 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Белый список: добавляем, только если слова нет в словаре и длина 4–11
     else:
         if 4 <= len(word) <= 11 and word not in WORDLIST:
-            suggestions["white"].append(word)
+            suggestions["white"].add(word)
             save_suggestions(suggestions)
             resp = "Спасибо, добавил в предложения для белого списка."
         else:
