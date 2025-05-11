@@ -1,3 +1,4 @@
+# .github/workflows/deploy-site.yml
 name: 🚀 Deploy Site & Sync Wordlist
 
 on:
@@ -32,22 +33,20 @@ jobs:
             git fetch origin main
             git checkout main
 
-            echo "=== Git: commit & push any VM-side wordlist changes ==="
-            # проверяем, изменился ли словарь
+            echo "=== Git: commit VM-side wordlist changes ==="
             if [ -n "$(git status --porcelain telegram-wordly-bot/base_words.json)" ]; then
               git add telegram-wordly-bot/base_words.json
               git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-              git pull --ff-only origin main       # подтягиваем чужие коммиты
-              git push origin main
+              git push --force origin main
             else
               echo "No VM-side wordlist changes."
             fi
 
-            echo "=== Git: align to origin/main ==="
+            echo "=== Git: hard-reset to origin/main ==="
             git fetch origin main
             git reset --hard origin/main
 
-            echo "=== Reload site ==="
+            echo "=== Deploy Site ==="
             cd site
             sudo nginx -s reload
 
