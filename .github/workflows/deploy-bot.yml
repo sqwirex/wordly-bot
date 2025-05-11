@@ -32,24 +32,20 @@ jobs:
             DEPLOY_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
             cd $DEPLOY_DIR
 
-            echo "=== Clean any in-progress merge/rebase ==="
-            git merge --abort   || true
-            git rebase --abort  || true
-
-            echo "=== Git: reset hard to origin/main ==="
+            echo "=== Git: fetch & checkout main ==="
             git fetch origin main
-            git reset --hard origin/main
+            git checkout main
 
-            echo "=== Git: commit & push VM-side changes ==="
+            echo "=== Git: commit & push VM-side changes (before reset) ==="
             if [ -n "$(git status --porcelain)" ]; then
               git add telegram-wordly-bot/base_words.json
               git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
               git push origin main
             else
-              echo "No VM-side changes."
+              echo "No VM-side changes to commit."
             fi
 
-            echo "=== Git: ensure up-to-date ==="
+            echo "=== Git: reset hard to origin/main ==="
             git fetch origin main
             git reset --hard origin/main
 
