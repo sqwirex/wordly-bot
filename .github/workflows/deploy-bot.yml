@@ -35,6 +35,9 @@ jobs:
             git fetch origin main
             git checkout main
 
+            echo "=== Git: fast-forward to origin/main ==="
+            git pull origin main --ff-only
+
             echo "=== Git: commit & push VM-side changes (before reset) ==="
             if [ -n "$(git status --porcelain)" ]; then
               git add telegram-wordly-bot/base_words.json

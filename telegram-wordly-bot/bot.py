@@ -876,7 +876,7 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store = load_store()
     u = store["users"].get(str(update.effective_user.id), {})
     clear_notification_flag(str(update.effective_user.id))
-    if "current_game" in u and context.user_data.get("game_active"):
+    if "current_game" in u or context.user_data.get("game_active"):
         await update.message.reply_text(
             "Нельзя отправлять фидбек пока идет игра или после перезапуска.\n"
             "Сначала продолжи играть /play, а потом либо закончи игру, либо сбрось /reset",
