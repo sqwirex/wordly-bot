@@ -20,7 +20,7 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Deploy to VPS via SSH
+        - name: Deploy to VPS via SSH
       uses: appleboy/ssh-action@v0.1.7
       with:
         host: ${{ secrets.VPS_HOST }}
@@ -30,32 +30,30 @@ jobs:
         script: |
           set -xe
 
-          # Путь на VPS к корню вашего репо
+          # Абсолютный путь к репо на VPS
           DEPLOY_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
-
           cd $DEPLOY_DIR
 
-          echo "=== Git: checkout main ==="
+          echo "=== Git: ensure main ==="
           git fetch origin main
           git checkout main
 
-          echo "=== Git: pull latest ==="
-          git pull origin main --ff-only
-
-          echo "=== Git: check for VM-side changes ==="
-          CHANGES=$(git status --porcelain)
-          if [ -n "$CHANGES" ]; then
-            echo "Detected local VM changes:"
-            echo "$CHANGES"
-            echo "=== Git: commit & push VM changes ==="
+          echo "=== Git: commit & push VM-side changes if any ==="
+          # коммитим любые незакоммиченные правки (например, base_words.json)
+          if [ -n "$(git status --porcelain)" ]; then
             git add telegram-wordly-bot/base_words.json
             git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
             git push origin main
           else
-            echo "No VM-side changes to commit."
+            echo "No local VM changes."
           fi
 
-          echo "=== Docker: build image ==="
+          echo "=== Git: pull & rebase latest from origin ==="
+          # подтягиваем и ставим ваши изменения сверху
+          git fetch origin main
+          git rebase origin/main
+
+          echo "=== Docker: build new image ==="
           docker build -t wordly-bot .
 
           echo "=== Docker: stop & remove old container ==="
@@ -69,7 +67,8 @@ jobs:
             --env-file $DEPLOY_DIR/telegram-wordly-bot/.env \
             wordly-bot
 
-          echo "=== Docker: prune images ==="
+          echo "=== Docker: prune dangling images ==="
           docker image prune -f
 
           echo "✅ Bot deployed successfully"
+
