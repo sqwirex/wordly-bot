@@ -445,6 +445,8 @@ async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
     """
     store = load_store()
     for uid, udata in store["users"].items():
+        if not udata.get("notify_on_wakeup", True):
+            continue
         if "current_game" in udata:
             cg = udata["current_game"]
             length = len(cg["secret"])
@@ -974,29 +976,31 @@ async def dict_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
 
-    # Собираем весь WORDLIST в единую строку для файла
-    data = "\n".join(WORDLIST)
-    count = len(WORDLIST)
+    # Читаем свежий словарь из base_words.json
+    with BASE_FILE.open("r", encoding="utf-8") as f:
+        fresh_list = json.load(f)
 
-    # Считаем количество слов каждой длины
-    length_counts = Counter(len(w) for w in WORDLIST)
-    # Формируем строку вида "4 букв: 123, 5 букв: 456, …"
+    total = len(fresh_list)
+    data = "\n".join(fresh_list)
+
+    # Считаем количество слов каждой длины (4–11)
+    length_counts = Counter(len(w) for w in fresh_list)
     stats_lines = [
         f"{length} букв: {length_counts.get(length, 0)}"
         for length in range(4, 12)
     ]
     stats_text = "\n".join(stats_lines)
 
-    # Упаковываем в BytesIO, задаём имя файла
+    # Упаковываем весь список в файл
     bio = BytesIO(data.encode("utf-8"))
     bio.name = "wordlist.txt"
 
-    # Отправляем как документ с дополнительной статистикой
+    # Отправляем документ с общей и детальной статистикой
     await update.message.reply_document(
         document=bio,
         filename="wordlist.txt",
         caption=(
-            f"📚 В словаре всего {count} слов.\n\n"
+            f"📚 В словаре всего {total} слов.\n\n"
             f"🔢 Распределение по длине:\n{stats_text}"
         )
     )
@@ -1178,11 +1182,7 @@ def main():
 
     # отправляем один раз при загрузке
     app.job_queue.run_once(send_activity_periodic, when=0)
-    for uid, udata in store["users"].items():
-        if not udata.get("notify_on_wakeup", True):
-           continue
-        if "current_game" in udata:
-            app.job_queue.run_once(send_unfinished_games, when=1)
+    app.job_queue.run_once(send_unfinished_games, when=1)
 
 
     feedback_conv = ConversationHandler(
