@@ -55,6 +55,7 @@ async def set_commands(app):
             BotCommand("play",          "Начать новую игру"),
             BotCommand("hint",    "Подсказка"),
             BotCommand("reset",         "Сбросить игру"),
+            BotCommand("notification",         "Включить/Отключить уведомления"),
             BotCommand("my_stats",      "Ваша статистика"),
             BotCommand("global_stats",  "Глобальная статистика"),
             BotCommand("feedback", "Жалоба на слово"),
@@ -62,6 +63,7 @@ async def set_commands(app):
             BotCommand("dump_activity", "Скачать user_activity.json"),
             BotCommand("suggestions_view", "Посмотреть фидбек юзеров"),
             BotCommand("suggestions_remove", "Удалить что-то из фидбека"),
+            BotCommand("suggestions_approve", "Внести изменения в словарь"),
             BotCommand("broadcast", "Отправить сообщение всем юзерам"),
             BotCommand("broadcast_cancel", "Отменить отправку")
         ],
@@ -499,6 +501,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/hint — дает слово в подсказку, если вы затрудняетесь ответить " \
         "(случайное слово в котором совпадают некоторые буквы с загаданным)\n"
         "/reset — сбросить текущую игру\n"
+        "/notification — включить/отключить уведомления при пробуждении бота\n"
         "/my_stats — посмотреть свою статистику\n"
         "/global_stats — посмотреть глобальную статистику за все время\n"
         "/feedback — если ты встретил слово, которое не должно быть в словаре или не существует, введи его в Черный список, " \
@@ -766,6 +769,18 @@ async def reset_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Сейчас нечего сбрасывать — начните игру: /play")
 
 
+async def notification_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    store = load_store()
+    user = store["users"].setdefault(uid, {"stats": {...}})
+    # Переключаем
+    current = user.get("notify_on_wakeup", True)
+    user["notify_on_wakeup"] = not current
+    save_store(store)
+    state = "включены" if not current else "отключены"
+    await update.message.reply_text(f"Уведомления при пробуждении бота {state}.")
+
+
 async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает личную статистику — только вне игры."""
     update_user_activity(update.effective_user)
@@ -959,19 +974,31 @@ async def dict_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
 
-    # Собираем весь WORDLIST в единую строку
+    # Собираем весь WORDLIST в единую строку для файла
     data = "\n".join(WORDLIST)
     count = len(WORDLIST)
 
-    # Упаковываем в BytesIO, задаем имя файла
+    # Считаем количество слов каждой длины
+    length_counts = Counter(len(w) for w in WORDLIST)
+    # Формируем строку вида "4 букв: 123, 5 букв: 456, …"
+    stats_lines = [
+        f"{length} букв: {length_counts.get(length, 0)}"
+        for length in range(4, 12)
+    ]
+    stats_text = "\n".join(stats_lines)
+
+    # Упаковываем в BytesIO, задаём имя файла
     bio = BytesIO(data.encode("utf-8"))
     bio.name = "wordlist.txt"
 
-    # Отправляем как документ
+    # Отправляем как документ с дополнительной статистикой
     await update.message.reply_document(
         document=bio,
         filename="wordlist.txt",
-        caption=f"📚 В словаре {count} слов"
+        caption=(
+            f"📚 В словаре всего {count} слов.\n\n"
+            f"🔢 Распределение по длине:\n{stats_text}"
+        )
     )
 
 
@@ -1078,6 +1105,28 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
     return ConversationHandler.END
 
 
+async def suggestions_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    sugg = load_suggestions()  # получаем {'black': set(), 'white': set()}
+    # Читаем текущий словарь
+    with BASE_FILE.open("r", encoding="utf-8") as f:
+        words = set(json.load(f))
+    # Удаляем «чёрные»
+    words -= sugg["black"]
+    # Добавляем «белые»
+    words |= sugg["white"]
+    # Сортируем и сохраняем
+    new_list = sorted(words)
+    with BASE_FILE.open("w", encoding="utf-8") as f:
+        json.dump(new_list, f, ensure_ascii=False, indent=2)
+    # Очищаем suggestions.json
+    save_suggestions({"black": set(), "white": set()})
+    await update.message.reply_text(
+        f"Словарь обновлён: +{len(sugg['white'])}, -{len(sugg['black'])}. Предложения очищены."
+    )
+
+
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # только админ
     context.user_data["in_broadcast"] = True
@@ -1127,7 +1176,11 @@ def main():
 	
     # отправляем один раз при загрузке
     app.job_queue.run_once(send_activity_periodic, when=0)
-    app.job_queue.run_once(send_unfinished_games, when=1)
+    for uid, udata in store["users"].items():
+        if not udata.get("notify_on_wakeup", True):
+           continue
+        if "current_game" in udata:
+            app.job_queue.run_once(send_unfinished_games, when=1)
 
     feedback_conv = ConversationHandler(
     entry_points=[CommandHandler("feedback", feedback_start)],
@@ -1179,8 +1232,9 @@ def main():
     )
     app.add_handler(conv)
 
-    # 1) просмотр
+    # 1) просмотр и подтверждение предложений
     app.add_handler(CommandHandler("suggestions_view", suggestions_view))
+    app.add_handler(CommandHandler("suggestions_approve", suggestions_approve))
 
     # 2) удаление через ConversationHandler
     remove_conv = ConversationHandler(
@@ -1216,6 +1270,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("hint", hint_not_allowed))
     app.add_handler(CommandHandler("reset", reset_global))
+    app.add_handler(CommandHandler("notification", notification_toggle))
     app.add_handler(CommandHandler("my_stats", my_stats))
     app.add_handler(CommandHandler("global_stats", global_stats))
     app.add_handler(CommandHandler("dict_file", dict_file))
