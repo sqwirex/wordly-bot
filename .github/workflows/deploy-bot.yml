@@ -13,7 +13,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -33,20 +32,24 @@ jobs:
             DEPLOY_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
             cd $DEPLOY_DIR
 
-            echo "=== Git: fetch & checkout main ==="
-            git fetch origin main
-            git checkout main
+            echo "=== Clean any in-progress merge/rebase ==="
+            git merge --abort   || true
+            git rebase --abort  || true
 
-            echo "=== Git: commit & push VM‑side changes ==="
+            echo "=== Git: reset hard to origin/main ==="
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "=== Git: commit & push VM-side changes ==="
             if [ -n "$(git status --porcelain)" ]; then
               git add telegram-wordly-bot/base_words.json
               git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
               git push origin main
             else
-              echo "No VM‑side changes."
+              echo "No VM-side changes."
             fi
 
-            echo "=== Git: hard-reset to origin/main ==="
+            echo "=== Git: ensure up-to-date ==="
             git fetch origin main
             git reset --hard origin/main
 
