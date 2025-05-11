@@ -41,13 +41,9 @@ jobs:
             git reset --hard origin/main
 
             echo "=== Git: commit & push VM-side changes ==="
-            if [ -n "$(git status --porcelain)" ]; then
-              git add telegram-wordly-bot/base_words.json
-              git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-              git push origin main
-            else
-              echo "No VM-side changes."
-            fi
+            git add telegram-wordly-bot/base_words.json
+            git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            git push origin main
 
             echo "=== Git: ensure up-to-date ==="
             git fetch origin main
