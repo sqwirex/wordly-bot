@@ -9,44 +9,51 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-    - name: Deploy to VPS via SSH
-      uses: appleboy/ssh-action@v0.1.7
-      with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: ${{ secrets.VPS_PORT || '22' }}
-        script: |
-          set -e
-          cd ~/site-for-mpu
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            cd ~/site-for-mpu
 
-          echo "=== Sync code ==="
-          git checkout main
-          git pull origin main
+            echo "=== Sync code ==="
+            git checkout main
+            git pull origin main
 
-          echo "=== Build new image ==="
-          docker build -t wordly-bot .
+            echo "=== Commit & push any local changes (e.g. updated wordlist) ==="
+            # если есть незакоммиченные изменения — запушим их обратно
+            if ! git diff --quiet; then
+              git add .
+              git commit -m "ci: sync updated base_words.json from VPS @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+              git push origin main
+            else
+              echo "No local changes to commit."
+            fi
 
-          echo "=== Remove old container ==="
-          docker rm -f wordly-bot || true
+            echo "=== Build new image ==="
+            docker build -t wordly-bot .
 
+            echo "=== Remove old container ==="
+            docker rm -f wordly-bot || true
 
-          echo "=== Run container ==="
-          docker run -d \
-            --name wordly-bot \
-            --restart unless-stopped \
-            --env-file telegram-wordly-bot/.env \
-            -v ~/site-for-mpu:/app \
-            wordly-bot
+            echo "=== Run container ==="
+            docker run -d \
+              --name wordly-bot \
+              --restart unless-stopped \
+              --env-file telegram-wordly-bot/.env \
+              wordly-bot
 
-          echo "=== Prune dangling images ==="
-          docker image prune -f
-          
-          echo "✅ Bot deployed successfully"
+            echo "=== Prune dangling images ==="
+            docker image prune -f
+
+            echo "✅ Bot deployed successfully"
