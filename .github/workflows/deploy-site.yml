@@ -25,28 +25,30 @@ jobs:
           script: |
             set -xe
 
-            DEPLOY_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
+            BASE_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
+            cd $BASE_DIR
 
-            # 1) Сначала — коммитим и пушим правки словаря, если бот изменил его на VM
-            cd $DEPLOY_DIR/telegram-wordly-bot
+            echo "=== Git: fetch & checkout main ==="
             git fetch origin main
             git checkout main
-            git pull origin main --ff-only
-            if [ -n "$(git status --porcelain)" ]; then
-              git add base_words.json
+
+            echo "=== Git: commit & push any VM-side wordlist changes ==="
+            # проверяем, изменился ли словарь
+            if [ -n "$(git status --porcelain telegram-wordly-bot/base_words.json)" ]; then
+              git add telegram-wordly-bot/base_words.json
               git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-              git pull origin main --ff-only
+              git pull --ff-only origin main       # подтягиваем чужие коммиты
               git push origin main
             else
-              echo "No wordlist changes on VM."
+              echo "No VM-side wordlist changes."
             fi
 
-            # 2) Синхроним код сайта
-            cd $DEPLOY_DIR/site
+            echo "=== Git: align to origin/main ==="
             git fetch origin main
             git reset --hard origin/main
 
-            # 3) Перезагружаем веб‑сервер
+            echo "=== Reload site ==="
+            cd site
             sudo nginx -s reload
 
             echo "✅ Site deployed and wordlist synced"

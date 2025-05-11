@@ -1,8 +1,9 @@
-name: 🚀 Deploy Wordly Bot
+name: 🤖 Deploy Wordly Bot
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
     paths:
       - 'telegram-wordly-bot/**'
       - 'Dockerfile'
@@ -10,61 +11,60 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  deploy-bot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Deploy to VPS via SSH
+      - name: Deploy Bot via SSH
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.VPS_PORT }}
+          key:      ${{ secrets.SSH_PRIVATE_KEY }}
+          port:     ${{ secrets.VPS_PORT || 22 }}
           script: |
             set -xe
 
-            DEPLOY_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
-            cd $DEPLOY_DIR
+            BASE_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
+            cd $BASE_DIR
 
             echo "=== Git: fetch & checkout main ==="
             git fetch origin main
             git checkout main
 
-            echo "=== Git: fast-forward to origin/main ==="
-            git pull origin main --ff-only
-
-            echo "=== Git: commit & push VM-side changes (before reset) ==="
-            if [ -n "$(git status --porcelain)" ]; then
+            echo "=== Git: commit & push VM-side wordlist changes ==="
+            if [ -n "$(git status --porcelain telegram-wordly-bot/base_words.json)" ]; then
               git add telegram-wordly-bot/base_words.json
               git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-              git pull origin main --ff-only
+              git pull --ff-only origin main
               git push origin main
             else
-              echo "No VM-side changes to commit."
+              echo "No VM-side wordlist changes."
             fi
 
-            echo "=== Git: reset hard to origin/main ==="
+            echo "=== Git: align local to origin/main ==="
             git fetch origin main
             git reset --hard origin/main
 
             echo "=== Docker: build image ==="
             docker build -t wordly-bot .
 
-            echo "=== Docker: replace container ==="
+            echo "=== Docker: stop & remove old container ==="
             docker rm -f wordly-bot || true
+
+            echo "=== Docker: start new container ==="
             docker run -d \
               --name wordly-bot \
               --restart unless-stopped \
-              -v $DEPLOY_DIR/telegram-wordly-bot:/app/telegram-wordly-bot \
-              --env-file $DEPLOY_DIR/telegram-wordly-bot/.env \
+              -v $BASE_DIR/telegram-wordly-bot:/app/telegram-wordly-bot \
+              --env-file $BASE_DIR/telegram-wordly-bot/.env \
               wordly-bot
 
-            echo "=== Docker: prune images ==="
+            echo "=== Docker: prune dangling images ==="
             docker image prune -f
 
-            echo "✅ Bot deployed successfully"
+            echo "✅ Bot deployed and wordlist synced"
