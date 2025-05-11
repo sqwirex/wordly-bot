@@ -201,6 +201,14 @@ def update_user_activity(user) -> None:
     save_store(store)
 
 
+def clear_notification_flag(user_id: str):
+    store = load_store()
+    u = store["users"].get(user_id)
+    if u and u.get("notified"):
+        u["notified"] = False
+        save_store(store)
+
+
 def normalize(text: str) -> str:
     # переводим все в нижний регистр и убираем «е»
     return text.strip().lower().replace("ё", "е")
@@ -440,31 +448,21 @@ async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
 
 async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
     """
-    Периодически шлёт напоминание тем, у кого включены уведомления
-    о незавершённой игре, но не чаще чем раз в час.
+    Шлёт напоминание тем, у кого включены уведомления о незавершённой игре,
+    но только если после последнего напоминания пользователь ни разу не отреагировал.
+    После отправки ставит флаг, чтобы больше не присылать, пока пользователь не сыграет/не напишет.
     """
     store = load_store()
-    now = datetime.now(ZoneInfo("Europe/Moscow"))
 
     for uid, udata in store["users"].items():
-        # Пропускаем, если уведомления выключены
+        # уведомления выключены
         if not udata.get("notify_on_wakeup", True):
             continue
-        # Только для юзеров с незавершённой игрой
+        # у пользователя нет незаконченной игры
         if "current_game" not in udata:
             continue
-
-        # Время последнего уведомления
-        last_iso = udata.get("last_notify_msk")
-        last_dt = None
-        if last_iso:
-            try:
-                last_dt = datetime.fromisoformat(last_iso)
-            except ValueError:
-                last_dt = None
-
-        # Если прошло меньше часа с прошлого уведомления — пропускаем
-        if last_dt and (now - last_dt) < timedelta(hours=1):
+        # если уже отправляли и пользователь не отреагировал — пропускаем
+        if udata.get("notified", False):
             continue
 
         # Отправляем напоминание
@@ -484,11 +482,13 @@ async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
             continue
 
         # Запоминаем время отправки
-        udata["last_notify_msk"] = now.isoformat()
+        udata["notified"] = True
         save_store(store)
 
 
+
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    clear_notification_flag(str(update.effective_user.id))
     # если сейчас в игре или в фидбеке — молчим
     if context.user_data.get("game_active") or context.user_data.get("in_feedback") or context.user_data.get("in_remove"):
         return
@@ -504,6 +504,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     store = load_store()
     u = store["users"].get(str(update.effective_user.id), {})
+    clear_notification_flag(str(update.effective_user.id))
     if "current_game" in u:
         cg = u["current_game"]
         # заполняем context.user_data из cg:
@@ -542,6 +543,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["state"] = ASK_LENGTH
     update_user_activity(update.effective_user)
+    clear_notification_flag(str(update.effective_user.id))
     context.user_data["game_active"] = True
     store = load_store()
     u = store["users"].get(str(update.effective_user.id), {})
@@ -769,6 +771,7 @@ async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def hint_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сообщение, если /hint вызвали не во время игры."""
+    clear_notification_flag(str(update.effective_user.id))
     await update.message.reply_text("Эту команду можно использовать только во время игры.")
     # если сейчас выбираем длину — останемся в ASK_LENGTH, иначе в GUESSING
     return context.user_data.get("state", ASK_LENGTH)
@@ -791,6 +794,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
+    clear_notification_flag(str(update.effective_user.id))
     await update.message.reply_text("Сейчас нечего сбрасывать — начните игру: /play")
 
 
@@ -798,6 +802,7 @@ async def notification_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE
     uid = str(update.effective_user.id)
     store = load_store()
     user = store["users"].setdefault(uid, {"stats": {...}})
+    clear_notification_flag(str(update.effective_user.id))
     # Переключаем
     current = user.get("notify_on_wakeup", True)
     user["notify_on_wakeup"] = not current
@@ -860,6 +865,7 @@ async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def only_outside_game(update, context):
+    clear_notification_flag(str(update.effective_user.id))
     await update.message.reply_text("Эту команду можно использовать только вне игры.")
     # вернем то состояние, в котором сейчас юзер:
     return context.user_data.get("state", ConversationHandler.END)
@@ -869,16 +875,11 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # запретим во время игры
     store = load_store()
     u = store["users"].get(str(update.effective_user.id), {})
-    if "current_game" in u:
+    clear_notification_flag(str(update.effective_user.id))
+    if "current_game" in u and context.user_data.get("game_active"):
         await update.message.reply_text(
-            "Нельзя отправлять фидбек пока идет игра. Сначала закончи играть или нажми /reset.",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return ConversationHandler.END
-    
-    if context.user_data.get("game_active"):
-        await update.message.reply_text(
-            "Нельзя отправлять фидбек пока идет игра. Сначала закончи играть или нажми /reset.",
+            "Нельзя отправлять фидбек пока идет игра или после перезапуска.\n"
+            "Сначала продолжи играть /play, а потом либо закончи игру, либо сбрось /reset",
             reply_markup=ReplyKeyboardRemove(),
         )
         return ConversationHandler.END
