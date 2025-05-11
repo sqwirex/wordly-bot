@@ -1,61 +1,75 @@
-name: Auto-Deploy Wordly Bot
+# .github/workflows/deploy.yml
+name: Deploy Wordly Bot
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'telegram-wordly-bot/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
 
-      - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          script: |
-            set -e
-            cd ~/site-for-mpu
+    - name: Deploy to VPS via SSH
+      uses: appleboy/ssh-action@v0.1.7
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.VPS_PORT }}
+        script: |
+          set -xe
 
-            echo "=== Sync code ==="
-            git checkout main
-            git pull origin main
+          # Путь на VPS к корню вашего репо
+          DEPLOY_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
 
-            echo "=== Commit & push any local changes (e.g. updated wordlist) ==="
-            # если есть незакоммиченные изменения — запушим их обратно
-            if ! git diff --quiet; then
-              git add .
-              git commit -m "ci: sync updated base_words.json from VPS @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-              git push origin main
-            else
-              echo "No local changes to commit."
-            fi
+          cd $DEPLOY_DIR
 
-            echo "=== Build new image ==="
-            docker build -t wordly-bot .
+          echo "=== Git: checkout main ==="
+          git fetch origin main
+          git checkout main
 
-            echo "=== Remove old container ==="
-            docker rm -f wordly-bot || true
+          echo "=== Git: pull latest ==="
+          git pull origin main --ff-only
 
-            echo "=== Run container ==="
-            docker run -d \
-              --name wordly-bot \
-              --restart unless-stopped \
-              --env-file /app/telegram-wordly-bot/.env \
-              -v ~/site-for-mpu/telegram-wordly-bot:/app/telegram-wordly-bot \
-              wordly-bot
+          echo "=== Git: check for VM-side changes ==="
+          CHANGES=$(git status --porcelain)
+          if [ -n "$CHANGES" ]; then
+            echo "Detected local VM changes:"
+            echo "$CHANGES"
+            echo "=== Git: commit & push VM changes ==="
+            git add telegram-wordly-bot/base_words.json
+            git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            git push origin main
+          else
+            echo "No VM-side changes to commit."
+          fi
 
-            echo "=== Prune dangling images ==="
-            docker image prune -f
+          echo "=== Docker: build image ==="
+          docker build -t wordly-bot .
 
-            echo "✅ Bot deployed successfully"
+          echo "=== Docker: stop & remove old container ==="
+          docker rm -f wordly-bot || true
+
+          echo "=== Docker: run new container ==="
+          docker run -d \
+            --name wordly-bot \
+            --restart unless-stopped \
+            -v $DEPLOY_DIR/telegram-wordly-bot:/app/telegram-wordly-bot \
+            --env-file $DEPLOY_DIR/telegram-wordly-bot/.env \
+            wordly-bot
+
+          echo "=== Docker: prune images ==="
+          docker image prune -f
+
+          echo "✅ Bot deployed successfully"
