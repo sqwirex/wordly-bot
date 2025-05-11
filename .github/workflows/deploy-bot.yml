@@ -30,34 +30,31 @@ jobs:
           script: |
             set -xe
 
-            # Абсолютный путь к корню репо на VPS
             DEPLOY_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
             cd $DEPLOY_DIR
 
-            echo "=== Git: checkout main ==="
+            echo "=== Git: fetch & checkout main ==="
             git fetch origin main
             git checkout main
 
-            echo "=== Git: commit & push VM-side changes ==="
+            echo "=== Git: commit & push VM‑side changes ==="
             if [ -n "$(git status --porcelain)" ]; then
               git add telegram-wordly-bot/base_words.json
               git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
               git push origin main
             else
-              echo "No VM-side changes to commit."
+              echo "No VM‑side changes."
             fi
 
-            echo "=== Git: pull & rebase ==="
+            echo "=== Git: hard-reset to origin/main ==="
             git fetch origin main
-            git rebase origin/main
+            git reset --hard origin/main
 
             echo "=== Docker: build image ==="
             docker build -t wordly-bot .
 
-            echo "=== Docker: stop & remove old container ==="
+            echo "=== Docker: replace container ==="
             docker rm -f wordly-bot || true
-
-            echo "=== Docker: run new container ==="
             docker run -d \
               --name wordly-bot \
               --restart unless-stopped \
@@ -65,7 +62,7 @@ jobs:
               --env-file $DEPLOY_DIR/telegram-wordly-bot/.env \
               wordly-bot
 
-            echo "=== Docker: prune dangling images ==="
+            echo "=== Docker: prune images ==="
             docker image prune -f
 
             echo "✅ Bot deployed successfully"
