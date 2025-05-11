@@ -1132,6 +1132,12 @@ async def suggestions_approve(update: Update, context: ContextTypes.DEFAULT_TYPE
     with BASE_FILE.open("w", encoding="utf-8") as f:
         json.dump(filtered, f, ensure_ascii=False, indent=2)
 
+    logger.info(f"-> Wrote {len(filtered)} words to {BASE_FILE.resolve()}")
+
+    with BASE_FILE.open("r", encoding="utf-8") as f:
+        reloaded = json.load(f)
+    logger.info(f"-> On disk now {len(reloaded)} words")
+
     # 6. Обновляем глобальный список в памяти
     global WORDLIST
     WORDLIST = filtered
