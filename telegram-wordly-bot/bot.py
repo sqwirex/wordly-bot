@@ -1175,7 +1175,7 @@ def main():
     )
 	
     store = load_store()
-    
+
     # отправляем один раз при загрузке
     app.job_queue.run_once(send_activity_periodic, when=0)
     for uid, udata in store["users"].items():
@@ -1183,6 +1183,7 @@ def main():
            continue
         if "current_game" in udata:
             app.job_queue.run_once(send_unfinished_games, when=1)
+
 
     feedback_conv = ConversationHandler(
     entry_points=[CommandHandler("feedback", feedback_start)],
