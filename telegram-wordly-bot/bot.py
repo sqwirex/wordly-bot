@@ -1174,6 +1174,8 @@ def main():
         .build()
     )
 	
+    store = load_store()
+    
     # отправляем один раз при загрузке
     app.job_queue.run_once(send_activity_periodic, when=0)
     for uid, udata in store["users"].items():
@@ -1275,8 +1277,6 @@ def main():
     app.add_handler(CommandHandler("global_stats", global_stats))
     app.add_handler(CommandHandler("dict_file", dict_file))
     app.add_handler(CommandHandler("dump_activity", dump_activity))
-
-    store = load_store()
 
     app.run_polling(drop_pending_updates=True)
 
