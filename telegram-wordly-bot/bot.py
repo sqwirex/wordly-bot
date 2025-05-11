@@ -1112,22 +1112,37 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
 async def suggestions_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    sugg = load_suggestions()  # получаем {'black': set(), 'white': set()}
-    # Читаем текущий словарь
+
+    # 1. Загружаем предложения
+    sugg = load_suggestions()  # {'black': set(), 'white': set()}
+
+    # 2. Читаем текущий base_words.json
     with BASE_FILE.open("r", encoding="utf-8") as f:
         words = set(json.load(f))
-    # Удаляем «чёрные»
+
+    # 3. Убираем «чёрные» и добавляем «белые»
     words -= sugg["black"]
-    # Добавляем «белые»
     words |= sugg["white"]
-    # Сортируем и сохраняем
-    new_list = sorted(words)
+
+    # 4. Фильтруем по критериям (только буквы, длина 4–11) и сортируем
+    filtered = [w for w in words if w.isalpha() and 4 <= len(w) <= 11]
+    filtered.sort()
+
+    # 5. Сохраняем обратно в base_words.json
     with BASE_FILE.open("w", encoding="utf-8") as f:
-        json.dump(new_list, f, ensure_ascii=False, indent=2)
-    # Очищаем suggestions.json
+        json.dump(filtered, f, ensure_ascii=False, indent=2)
+
+    # 6. Обновляем глобальный список в памяти
+    global WORDLIST
+    WORDLIST = filtered
+
+    # 7. Очищаем suggestions.json
     save_suggestions({"black": set(), "white": set()})
+
+    # 8. Ответ админу
     await update.message.reply_text(
-        f"Словарь обновлён: +{len(sugg['white'])}, -{len(sugg['black'])}. Предложения очищены."
+        f"Словарь пересобран: +{len(sugg['white'])}, -{len(sugg['black'])}. "
+        "Предложения очищены."
     )
 
 
