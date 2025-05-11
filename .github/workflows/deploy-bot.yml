@@ -1,5 +1,4 @@
-# .github/workflows/deploy.yml
-name: Deploy Wordly Bot
+name: 🚀 Deploy Wordly Bot
 
 on:
   push:
@@ -7,7 +6,7 @@ on:
     paths:
       - 'telegram-wordly-bot/**'
       - 'Dockerfile'
-      - '.github/workflows/deploy.yml'
+      - '.github/workflows/deploy-bot.yml'
   workflow_dispatch:
 
 jobs:

@@ -1,4 +1,4 @@
-name: 🚀 Deploy Site
+name: 🚀 Deploy Site & Sync Wordlist
 
 on:
   push:
@@ -6,13 +6,16 @@ on:
       - main
     paths:
       - 'site/**'
+      - '.github/workflows/deploy-site.yml'
+  workflow_dispatch:
 
 jobs:
   deploy-site:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Deploy Site via SSH
+
+      - name: Deploy Site & Sync Wordlist via SSH
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -20,9 +23,28 @@ jobs:
           key:      ${{ secrets.SSH_PRIVATE_KEY }}
           port:     ${{ secrets.VPS_PORT || 22 }}
           script: |
-            set -e
-            cd ~/site-for-mpu/site
+            set -xe
+
+            DEPLOY_DIR=/home/${{ secrets.VPS_USER }}/site-for-mpu
+
+            # 1) Сначала — коммитим и пушим правки словаря, если бот изменил его на VM
+            cd $DEPLOY_DIR/telegram-wordly-bot
+            git fetch origin main
+            git checkout main
+            if [ -n "$(git status --porcelain)" ]; then
+              git add base_words.json
+              git commit -m "ci: sync wordlist from VM @ $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+              git push origin main
+            else
+              echo "No wordlist changes on VM."
+            fi
+
+            # 2) Синхроним код сайта
+            cd $DEPLOY_DIR/site
             git fetch origin main
             git reset --hard origin/main
+
+            # 3) Перезагружаем веб‑сервер
             sudo nginx -s reload
-            echo "✅ Site deployed"
+
+            echo "✅ Site deployed and wordlist synced"

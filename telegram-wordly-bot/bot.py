@@ -3,7 +3,7 @@ import logging
 import random
 import json
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
 from io import BytesIO
@@ -440,29 +440,52 @@ async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
 
 async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
     """
-    Раз в 1 секунду после старта отправляем всем пользователям с current_game
-    напоминание продолжить игру.
+    Периодически шлёт напоминание тем, у кого включены уведомления
+    о незавершённой игре, но не чаще чем раз в час.
     """
     store = load_store()
+    now = datetime.now(ZoneInfo("Europe/Moscow"))
+
     for uid, udata in store["users"].items():
+        # Пропускаем, если уведомления выключены
         if not udata.get("notify_on_wakeup", True):
             continue
-        if "current_game" in udata:
-            cg = udata["current_game"]
-            length = len(cg["secret"])
-            attempts = cg["attempts"]
+        # Только для юзеров с незавершённой игрой
+        if "current_game" not in udata:
+            continue
+
+        # Время последнего уведомления
+        last_iso = udata.get("last_notify_msk")
+        last_dt = None
+        if last_iso:
             try:
-                await context.bot.send_message(
-                    chat_id=int(uid),
-                    text=(
-                        f"Я вернулся из спячки!\n"
-                        f"⏳ У вас есть незавершенная игра:\n"
-                        f"{length}-буквенное слово, вы на попытке {attempts}.\n"
-                        "Нажмите /play или /start, чтобы продолжить!"
-                    )
-                )
-            except Exception as e:
-                logger.warning(f"Не смогли напомнить {uid}: {e}")
+                last_dt = datetime.fromisoformat(last_iso)
+            except ValueError:
+                last_dt = None
+
+        # Если прошло меньше часа с прошлого уведомления — пропускаем
+        if last_dt and (now - last_dt) < timedelta(hours=1):
+            continue
+
+        # Отправляем напоминание
+        cg = udata["current_game"]
+        length = len(cg["secret"])
+        attempts = cg["attempts"]
+        text = (
+            "Я вернулся из спячки!\n"
+            f"⏳ У вас есть незавершённая игра:\n"
+            f"{length}-буквенное слово, вы на попытке {attempts}.\n"
+            "Нажмите /play или /start, чтобы продолжить!"
+        )
+        try:
+            await context.bot.send_message(chat_id=int(uid), text=text)
+        except Exception as e:
+            logger.warning(f"Не смогли напомнить {uid}: {e}")
+            continue
+
+        # Запоминаем время отправки
+        udata["last_notify_msk"] = now.isoformat()
+        save_store(store)
 
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
