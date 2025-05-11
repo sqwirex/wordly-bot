@@ -3,7 +3,7 @@ import logging
 import random
 import json
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
 from io import BytesIO
@@ -1223,8 +1223,6 @@ def main():
         .build()
     )
 	
-    store = load_store()
-
     # отправляем один раз при загрузке
     app.job_queue.run_once(send_activity_periodic, when=0)
     app.job_queue.run_once(send_unfinished_games, when=1)
