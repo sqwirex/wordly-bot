@@ -53,7 +53,15 @@ jobs:
             docker build -t wordly-bot .
 
             echo "=== Docker: replace container ==="
-            docker rm -f wordly-bot || true
+            
+            # Останавливаем, ждём и удаляем контейнер, если он всё ещё существует
+            docker stop wordly-bot || true
+            
+            # Немного подождать, чтобы Docker освободил имя
+            sleep 2
+            docker rm wordly-bot || true
+            
+            # Запуск нового контейнера
             docker run -d \
               --name wordly-bot \
               --restart unless-stopped \
