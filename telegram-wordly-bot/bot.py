@@ -1385,14 +1385,29 @@ async def broadcast_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     store = load_store()      # берем тех, кого мы когда-то записали
     failed = []
-    for uid in store["users"].keys():
+    skipped = 0
+    total_sent = 0
+    
+    for uid, user_data in store["users"].items():
+        # Пропускаем забаненных пользователей
+        if user_data.get("banned", False):
+            skipped += 1
+            continue
+            
         try:
             await context.bot.send_message(chat_id=int(uid), text=text)
-        except Exception:
+            total_sent += 1
+        except Exception as e:
+            logger.error(f"Ошибка при отправке сообщения пользователю {uid}: {e}")
             failed.append(uid)
-    msg = "✅ Рассылка успешно отправлена!"
+    
+    msg = f"✅ Рассылка успешно отправлена!\n"
+    msg += f"• Отправлено: {total_sent} пользователям\n"
+    msg += f"• Пропущено (забанено): {skipped}"
+    
     if failed:
-        msg += f"\nНе удалось доставить сообщения пользователям: {', '.join(failed)}"
+        msg += f"\n\n❌ Не удалось доставить сообщения пользователям: {', '.join(failed)}"
+    
     await update.message.reply_text(msg)
     context.user_data.pop("in_broadcast", None)
     context.user_data["just_done"] = True
