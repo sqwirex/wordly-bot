@@ -4,6 +4,7 @@ import random
 import json
 
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
 from zoneinfo import ZoneInfo  # Python 3.9+
 from io import BytesIO
@@ -30,6 +31,8 @@ from telegram.ext import (
     ContextTypes,
     CallbackQueryHandler,
 )
+
+from telegram.error import BadRequest
 
 from dotenv import load_dotenv
 
@@ -68,7 +71,9 @@ async def set_commands(app):
             BotCommand("suggestions_remove", "Удалить что-то из фидбека"),
             BotCommand("suggestions_approve", "Внести изменения в словарь"),
             BotCommand("broadcast", "Отправить сообщение всем юзерам"),
-            BotCommand("broadcast_cancel", "Отменить отправку")
+            BotCommand("broadcast_cancel", "Отменить отправку"),
+            BotCommand("ban", "Заблокировать пользователя"),
+            BotCommand("unban", "Разблокировать пользователя"),
         ],
         scope=BotCommandScopeChat(chat_id=ADMIN_ID)
     )
@@ -174,6 +179,7 @@ def update_user_activity(user) -> None:
     - is_bot, is_premium, language_code
     - last_seen_msk (по московскому времени)
     - stats (если еще нет): games_played, wins, losses, win rate
+    - banned: флаг бана пользователя (если не установлен, то False)
     """
     store = load_store()
     uid = str(user.id)
@@ -189,7 +195,8 @@ def update_user_activity(user) -> None:
                 "wins": 0,
                 "losses": 0,
                 "win_rate": 0.0
-            }
+            },
+            "banned": False  # По умолчанию пользователь не забанен
         }
 
     u = users[uid]
@@ -423,6 +430,31 @@ def make_feedback(secret: str, guess: str) -> str:
 
 # --- Обработчики команд ---
 
+def check_ban_status(handler):
+    """Декоратор для проверки бана пользователя перед выполнением обработчика"""
+    @wraps(handler)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = str(update.effective_user.id)
+        if await is_banned(user_id):
+            try:
+                if update.callback_query:
+                    await update.callback_query.answer("❌ Вы заблокированы в этом боте.", show_alert=True)
+                else:
+                    await update.message.reply_text("❌ Вы заблокированы в этом боте.")
+                return
+            except Exception as e:
+                logger.warning(f"Error handling banned user {user_id}: {e}")
+                return
+        return await handler(update, context, *args, **kwargs)
+    return wrapper
+
+async def is_banned(user_id: str) -> bool:
+    """Проверяет, забанен ли пользователь"""
+    store = load_store()
+    user_data = store["users"].get(str(user_id), {})
+    return user_data.get("banned", False)
+
+@check_ban_status
 async def suggest_white_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатия на кнопку предложения слова в белый список"""
     query = update.callback_query
@@ -543,7 +575,8 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@check_ban_status
+def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     store = load_store()
     u = store["users"].get(str(update.effective_user.id), {})
@@ -583,6 +616,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@check_ban_status
 async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["state"] = ASK_LENGTH
     update_user_activity(update.effective_user)
@@ -608,6 +642,7 @@ async def ask_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ASK_LENGTH
 
 
+@check_ban_status
 async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     text = update.message.text.strip()
@@ -646,6 +681,7 @@ async def receive_length(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GUESSING
 
 
+@check_ban_status
 async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     store   = load_store()
@@ -790,6 +826,7 @@ async def ignore_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GUESSING
 
 
+@check_ban_status
 async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     store = load_store()
@@ -852,6 +889,7 @@ async def hint_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return context.user_data.get("state", ASK_LENGTH)
 
 
+@check_ban_status
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
 
@@ -873,6 +911,7 @@ async def reset_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Сейчас нечего сбрасывать — начните игру: /play")
 
 
+@check_ban_status
 async def notification_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = str(update.effective_user.id)
     store = load_store()
@@ -886,6 +925,7 @@ async def notification_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(f"Уведомления при пробуждении бота {state}.")
 
 
+@check_ban_status
 async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает личную статистику — только вне игры."""
     update_user_activity(update.effective_user)
@@ -908,6 +948,7 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@check_ban_status
 async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     """Показывает глобальную статистику — только вне игры."""
@@ -946,6 +987,7 @@ async def only_outside_game(update, context):
     return context.user_data.get("state", ConversationHandler.END)
 
 
+@check_ban_status
 async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # запретим во время игры
     store = load_store()
@@ -973,6 +1015,7 @@ async def feedback_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return FEEDBACK_CHOOSE
 
 
+@check_ban_status
 async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     if text == "Отмена":
@@ -996,6 +1039,7 @@ async def feedback_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return FEEDBACK_WORD
 
 
+@check_ban_status
 async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = normalize(update.message.text)
     target = context.user_data["fb_target"]
@@ -1348,6 +1392,78 @@ async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Рассылка отменена.")
     context.user_data.pop("in_broadcast", None)
     return ConversationHandler.END
+
+
+async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Блокирует пользователя по ID"""
+    # Проверяем, что команду вызвал администратор
+    if update.effective_user.id != ADMIN_ID:
+        return
+    
+    # Проверяем, передан ли ID пользователя
+    if not context.args:
+        await update.message.reply_text("❌ Укажите ID пользователя: /ban <user_id>")
+        return
+    
+    user_id = context.args[0].strip()
+    
+    # Проверяем корректность ID
+    if not user_id.isdigit():
+        await update.message.reply_text("❌ Неверный формат ID. ID должен состоять только из цифр.")
+        return
+    
+    store = load_store()
+    users = store["users"]
+    
+    # Если пользователя нет в базе, добавляем его
+    if user_id not in users:
+        users[user_id] = {
+            "first_name": f"Заблокированный пользователь ({user_id})",
+            "suggested_words": [],
+            "stats": {"games_played": 0, "wins": 0, "losses": 0, "win_rate": 0.0},
+            "banned": True
+        }
+        await update.message.reply_text(f"✅ Пользователь с ID {user_id} успешно заблокирован.")
+    else:
+        # Пользователь уже есть в базе, обновляем статус бана
+        if users[user_id].get("banned", False):
+            await update.message.reply_text(f"ℹ️ Пользователь с ID {user_id} уже заблокирован.")
+        else:
+            users[user_id]["banned"] = True
+            await update.message.reply_text(f"✅ Пользователь {users[user_id].get('first_name', user_id)} (ID: {user_id}) успешно заблокирован.")
+    
+    save_store(store)
+
+async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Разблокирует пользователя по ID"""
+    # Проверяем, что команду вызвал администратор
+    if update.effective_user.id != ADMIN_ID:
+        return
+    
+    # Проверяем, передан ли ID пользователя
+    if not context.args:
+        await update.message.reply_text("❌ Укажите ID пользователя: /unban <user_id>")
+        return
+    
+    user_id = context.args[0].strip()
+    
+    # Проверяем корректность ID
+    if not user_id.isdigit():
+        await update.message.reply_text("❌ Неверный формат ID. ID должен состоять только из цифр.")
+        return
+    
+    store = load_store()
+    users = store["users"]
+    
+    if user_id not in users:
+        await update.message.reply_text(f"ℹ️ Пользователь с ID {user_id} не найден в базе.")
+    else:
+        if not users[user_id].get("banned", False):
+            await update.message.reply_text(f"ℹ️ Пользователь с ID {user_id} не заблокирован.")
+        else:
+            users[user_id]["banned"] = False
+            save_store(store)
+            await update.message.reply_text(f"✅ Пользователь {users[user_id].get('first_name', user_id)} (ID: {user_id}) успешно разблокирован.")
 
 
 def main():
