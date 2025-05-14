@@ -1444,6 +1444,14 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             users[user_id]["banned"] = True
             users[user_id]["notification"] = False  # Отключаем уведомления при бане
             await update.message.reply_text(f"✅ Пользователь {users[user_id].get('first_name', user_id)} (ID: {user_id}) успешно заблокирован.")
+            try:
+                await context.bot.send_message(
+                    chat_id=int(user_id),
+                    text="❌ Вы были заблокированы в этом боте.\n\n"
+                         "Если вы считаете, что это произошло по ошибке, пожалуйста, свяжитесь с администратором."
+                )
+            except Exception as e:
+                logger.error(f"Не удалось отправить уведомление о блокировке пользователю {user_id}: {e}")
     
     save_store(store)
 
@@ -1480,6 +1488,14 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 del users[user_id]["notification"]
             save_store(store)
             await update.message.reply_text(f"✅ Пользователь {users[user_id].get('first_name', user_id)} (ID: {user_id}) успешно разблокирован.")
+            try:
+                await context.bot.send_message(
+                    chat_id=int(user_id),
+                    text="✅ Вы были разблокированы в этом боте.\n\n"
+                         "Теперь вы можете снова использовать все функции бота."
+                )
+            except Exception as e:
+                logger.error(f"Не удалось отправить уведомление о разблокировке пользователю {user_id}: {e}")
 
 
 def main():
