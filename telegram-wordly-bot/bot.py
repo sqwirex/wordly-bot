@@ -672,7 +672,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [
                 InlineKeyboardButton(
-                    "Предложить слово в белый список",
+                    "Предложить добавить слово",
                     callback_data=f"suggest_white:{guess}"
                 )
             ]
