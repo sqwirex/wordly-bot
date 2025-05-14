@@ -562,6 +562,7 @@ async def send_unfinished_games(context: ContextTypes.DEFAULT_TYPE):
 
 
 
+@check_ban_status
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     clear_notification_flag(str(update.effective_user.id))
     # если сейчас в игре или в фидбеке — молчим
@@ -1431,7 +1432,8 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "first_name": f"Заблокированный пользователь ({user_id})",
             "suggested_words": [],
             "stats": {"games_played": 0, "wins": 0, "losses": 0, "win_rate": 0.0},
-            "banned": True
+            "banned": True,
+            "notification": False  # Отключаем уведомления при бане
         }
         await update.message.reply_text(f"✅ Пользователь с ID {user_id} успешно заблокирован.")
     else:
@@ -1440,6 +1442,7 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"ℹ️ Пользователь с ID {user_id} уже заблокирован.")
         else:
             users[user_id]["banned"] = True
+            users[user_id]["notification"] = False  # Отключаем уведомления при бане
             await update.message.reply_text(f"✅ Пользователь {users[user_id].get('first_name', user_id)} (ID: {user_id}) успешно заблокирован.")
     
     save_store(store)
@@ -1472,6 +1475,9 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"ℹ️ Пользователь с ID {user_id} не заблокирован.")
         else:
             users[user_id]["banned"] = False
+            # Удаляем флаг уведомлений, чтобы использовать настройки по умолчанию
+            if "notification" in users[user_id]:
+                del users[user_id]["notification"]
             save_store(store)
             await update.message.reply_text(f"✅ Пользователь {users[user_id].get('first_name', user_id)} (ID: {user_id}) успешно разблокирован.")
 
