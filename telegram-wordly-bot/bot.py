@@ -1015,6 +1015,18 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if word in WORDLIST:
             suggestions["black"].add(word)
             save_suggestions(suggestions)
+            
+            # Добавляем слово в профиль пользователя
+            store = load_store()
+            user_id = str(update.effective_user.id)
+            if user_id not in store["users"]:
+                store["users"][user_id] = {}
+            if "suggested_words" not in store["users"][user_id]:
+                store["users"][user_id]["suggested_words"] = []
+            if word not in store["users"][user_id]["suggested_words"]:
+                store["users"][user_id]["suggested_words"].append(word)
+                save_store(store)
+                
             resp = "Спасибо, добавил в предложения для чёрного списка."
         else:
             resp = "Нельзя: слово должно быть в основном словаре."
@@ -1024,6 +1036,18 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 4 <= len(word) <= 11 and word not in WORDLIST:
             suggestions["white"].add(word)
             save_suggestions(suggestions)
+            
+            # Добавляем слово в профиль пользователя
+            store = load_store()
+            user_id = str(update.effective_user.id)
+            if user_id not in store["users"]:
+                store["users"][user_id] = {}
+            if "suggested_words" not in store["users"][user_id]:
+                store["users"][user_id]["suggested_words"] = []
+            if word not in store["users"][user_id]["suggested_words"]:
+                store["users"][user_id]["suggested_words"].append(word)
+                save_store(store)
+                
             resp = "Спасибо, добавил в предложения для белого списка."
         else:
             if word in WORDLIST:
@@ -1193,15 +1217,37 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
                 removed[key].append(w)
 
     save_suggestions(sugg)
-
+    
+    # Удаляем слова из профилей пользователей
+    store = load_store()
+    removed_count = 0
+    
+    # Собираем все удаленные слова из обоих списков
+    all_removed_words = set(removed["black"]) | set(removed["white"])
+    
+    # Проходим по всем пользователям и удаляем слова из их списков
+    for user_id, user_data in store["users"].items():
+        if "suggested_words" in user_data:
+            before = len(user_data["suggested_words"])
+            user_data["suggested_words"] = [w for w in user_data["suggested_words"] 
+                                         if w not in all_removed_words]
+            removed_count += before - len(user_data["suggested_words"])
+    
+    # Сохраняем изменения, если что-то было удалено
+    if removed_count > 0:
+        save_store(store)
+    
     # формируем ответ
     parts = []
     if removed["black"]:
         parts.append(f'Из черного удалено: {", ".join(removed["black"])}')
     if removed["white"]:
         parts.append(f'Из белого удалено: {", ".join(removed["white"])}')
+    if removed_count > 0:
+        parts.append(f'Из профилей пользователей удалено {removed_count} слов.')
     if not parts:
         parts = ["Ничего не удалено."]
+        
     await update.message.reply_text("\n".join(parts))
     context.user_data.pop("in_remove", None)
     context.user_data["just_done"] = True
