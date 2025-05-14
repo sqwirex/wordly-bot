@@ -1358,13 +1358,16 @@ async def suggestions_approve(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     # Собираем все одобренные слова (белый список)
     approved_words = sugg["white"]
+    blacklisted_words = sugg["black"]
     
     # Проходим по всем пользователям и удаляем одобренные слова из их списков
     for user_id, user_data in store["users"].items():
         if "suggested_words" in user_data:
             before = len(user_data["suggested_words"])
-            user_data["suggested_words"] = [w for w in user_data["suggested_words"] 
-                                         if w not in approved_words]
+            user_data["suggested_words"] = [
+                w for w in user_data["suggested_words"] 
+                if w not in approved_words and w not in blacklisted_words
+            ]
             removed_count += before - len(user_data["suggested_words"])
     
     # Сохраняем изменения, если что-то было удалено
@@ -1377,7 +1380,7 @@ async def suggestions_approve(update: Update, context: ContextTypes.DEFAULT_TYPE
     # 9. Ответ админу
     await update.message.reply_text(
         f"Словарь пересобран: +{len(sugg['white'])}, -{len(sugg['black'])}.\n"
-        f"Удалено {removed_count} предложений из профилей пользователей.\n"
+        f"Удалено {removed_count} слов (одобренные и черный список) из профилей пользователей.\n"
         "Предложения очищены."
     )
 
