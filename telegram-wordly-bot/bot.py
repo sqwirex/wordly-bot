@@ -183,6 +183,7 @@ def update_user_activity(user) -> None:
     if uid not in users:
         users[uid] = {
             "first_name": user.first_name,
+            "suggested_words": [],  # Список слов, предложенных пользователем
             "stats": {
                 "games_played": 0,
                 "wins": 0,
@@ -429,12 +430,24 @@ async def suggest_white_callback(update: Update, context: ContextTypes.DEFAULT_T
     
     # Извлекаем слово из callback_data и нормализуем его
     word = normalize(query.data.split(':', 1)[1])
-    logger.info(f"Пользователь предложил слово для белого списка: {word}")
+    user_id = str(update.effective_user.id)
     
-    # Добавляем нормализованное слово в предложения для белого списка
-    suggestions["white"].add(word)
-    save_suggestions(suggestions)
-    logger.info(f"Обновленный список предложений: {suggestions}")
+    # Загружаем данные пользователя
+    store = load_store()
+    user = store["users"].get(user_id, {})
+    
+    # Добавляем слово в предложения для белого списка, если его там еще нет
+    if word not in suggestions["white"]:
+        suggestions["white"].add(word)
+        save_suggestions(suggestions)
+    
+    # Добавляем слово в список предложенных пользователем, если его там еще нет
+    if "suggested_words" not in user:
+        user["suggested_words"] = []
+    
+    if word not in user["suggested_words"]:
+        user["suggested_words"].append(word)
+        save_store(store)
     
     # Обновляем сообщение, убирая кнопку
     await query.edit_message_text(
@@ -658,16 +671,23 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     normalized_guess = normalize(guess)
     
     # Валидация
-    logger.info(f"Проверка слова: {guess} (нормализовано: {normalized_guess}), длина: {len(guess)}, нужная длина: {length}")
-    logger.info(f"Слово в словаре: {normalized_guess in WORDLIST}")
-    
     if len(guess) != length:
-        logger.info(f"Неверная длина слова: {len(guess)} вместо {length}")
         await update.message.reply_text(f"Введите слово из {length} букв.")
         return GUESSING
     
+    # Проверяем, не предлагал ли пользователь это слово ранее
+    user_id = str(update.effective_user.id)
+    user = store["users"].get(user_id, {})
+    suggested_words = user.get("suggested_words", [])
+    
+    if normalized_guess in suggested_words and normalized_guess not in WORDLIST:
+        await update.message.reply_text(
+            "Извините, это слово уже было предложено вами, но еще не добавлено в словарь.\n"
+            "Пожалуйста, дождитесь его проверки администратором."
+        )
+        return GUESSING
+    
     if normalized_guess not in WORDLIST:
-        logger.info(f"Слово {normalized_guess} не найдено в словаре, показываем кнопку")
         # Предлагаем добавить слово в белый список
         keyboard = [
             [
@@ -1221,12 +1241,32 @@ async def suggestions_approve(update: Update, context: ContextTypes.DEFAULT_TYPE
     global WORDLIST
     WORDLIST = filtered
 
-    # 7. Очищаем suggestions.json
+    # 7. Удаляем одобренные слова из списка предложенных у пользователей
+    store = load_store()
+    removed_count = 0
+    
+    # Собираем все одобренные слова (белый список)
+    approved_words = sugg["white"]
+    
+    # Проходим по всем пользователям и удаляем одобренные слова из их списков
+    for user_id, user_data in store["users"].items():
+        if "suggested_words" in user_data:
+            before = len(user_data["suggested_words"])
+            user_data["suggested_words"] = [w for w in user_data["suggested_words"] 
+                                         if w not in approved_words]
+            removed_count += before - len(user_data["suggested_words"])
+    
+    # Сохраняем изменения, если что-то было удалено
+    if removed_count > 0:
+        save_store(store)
+
+    # 8. Очищаем suggestions.json
     save_suggestions({"black": set(), "white": set()})
 
-    # 8. Ответ админу
+    # 9. Ответ админу
     await update.message.reply_text(
-        f"Словарь пересобран: +{len(sugg['white'])}, -{len(sugg['black'])}. "
+        f"Словарь пересобран: +{len(sugg['white'])}, -{len(sugg['black'])}.\n"
+        f"Удалено {removed_count} предложений из профилей пользователей.\n"
         "Предложения очищены."
     )
 
