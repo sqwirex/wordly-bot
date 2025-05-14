@@ -576,7 +576,7 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @check_ban_status
-def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     store = load_store()
     u = store["users"].get(str(update.effective_user.id), {})
