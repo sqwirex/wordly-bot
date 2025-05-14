@@ -16,7 +16,9 @@ from telegram import (
     ReplyKeyboardRemove,
     BotCommand,
     BotCommandScopeChat,
-    InputFile
+    InputFile,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
 )
 
 from telegram.ext import (
@@ -26,6 +28,7 @@ from telegram.ext import (
     ConversationHandler,
     filters,
     ContextTypes,
+    CallbackQueryHandler,
 )
 
 from dotenv import load_dotenv
@@ -415,6 +418,27 @@ def make_feedback(secret: str, guess: str) -> str:
 
 # --- Обработчики команд ---
 
+async def suggest_white_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик нажатия на кнопку предложения слова в белый список"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Извлекаем слово из callback_data
+    word = query.data.split(':', 1)[1]
+    
+    # Добавляем слово в предложения для белого списка
+    suggestions["white"].add(word)
+    save_suggestions(suggestions)
+    
+    # Обновляем сообщение, убирая кнопку
+    await query.edit_message_text(
+        f"✅ Слово «{word}» добавлено в предложения для белого списка.\n"
+        "Спасибо за ваш вклад! Администратор рассмотрит ваше предложение."
+    )
+    
+    return GUESSING
+
+
 async def send_activity_periodic(context: ContextTypes.DEFAULT_TYPE):
     """
     Периодически (и сразу при старте) шлет user_activity.json администратору.
@@ -625,8 +649,25 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     length = len(secret)
 
     # Валидация
-    if len(guess) != length or guess not in WORDLIST:
-        await update.message.reply_text(f"Введите существующее слово из {length} букв.")
+    if len(guess) != length:
+        await update.message.reply_text(f"Введите слово из {length} букв.")
+        return GUESSING
+        
+    if guess not in WORDLIST:
+        # Предлагаем добавить слово в белый список
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "Предложить слово в белый список",
+                    callback_data=f"suggest_white:{guess}"
+                )
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            f"Слово «{guess}» не найдено в словаре.",
+            reply_markup=reply_markup
+        )
         return GUESSING
 
     # Сохраняем ход
@@ -1322,6 +1363,9 @@ def main():
     app.add_handler(CommandHandler("global_stats", global_stats))
     app.add_handler(CommandHandler("dict_file", dict_file))
     app.add_handler(CommandHandler("dump_activity", dump_activity))
+    
+    # Обработчик для кнопки предложения слова в белый список
+    app.add_handler(CallbackQueryHandler(suggest_white_callback, pattern=r'^suggest_white:'))
 
     app.run_polling(drop_pending_updates=True)
 
