@@ -816,11 +816,14 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Игра продолжается
     return GUESSING
 
+
+@check_ban_status
 async def ignore_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Команды /start и /play не работают во время игры — сначала /reset.")
     return ASK_LENGTH
 
 
+@check_ban_status
 async def ignore_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Команды /start и /play не работают во время игры — сначала /reset.")
     return GUESSING
@@ -881,6 +884,7 @@ async def hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return GUESSING
 
 
+@check_ban_status
 async def hint_not_allowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сообщение, если /hint вызвали не во время игры."""
     clear_notification_flag(str(update.effective_user.id))
@@ -905,6 +909,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+@check_ban_status
 async def reset_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_activity(update.effective_user)
     clear_notification_flag(str(update.effective_user.id))
@@ -980,6 +985,7 @@ async def global_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@check_ban_status
 async def only_outside_game(update, context):
     clear_notification_flag(str(update.effective_user.id))
     await update.message.reply_text("Эту команду можно использовать только вне игры.")
@@ -1107,12 +1113,14 @@ async def feedback_word(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+@check_ban_status
 async def feedback_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 
+@check_ban_status
 async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # любой посторонний ввод заглушаем
     await update.message.reply_text(
@@ -1122,6 +1130,7 @@ async def block_during_feedback(update: Update, context: ContextTypes.DEFAULT_TY
     return context.user_data.get("feedback_state", FEEDBACK_CHOOSE)
 
 
+@check_ban_status
 async def feedback_not_allowed_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Нельзя отправлять фидбек пока вы выбираете длину слова. "
@@ -1130,6 +1139,7 @@ async def feedback_not_allowed_ask(update: Update, context: ContextTypes.DEFAULT
     return ASK_LENGTH
 
 
+@check_ban_status
 async def feedback_not_allowed_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Нельзя отправлять фидбек во время игры. "
