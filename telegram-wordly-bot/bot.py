@@ -388,7 +388,11 @@ with BASE_FILE.open("r", encoding="utf-8") as f:
     base_words = json.load(f)
 
 # Фильтруем по критериям: только буквы, длина 4–11 символов
-filtered = [w for w in base_words if w.isalpha() and 4 <= len(w) <= 11]
+# и нормализуем слова (нижний регистр, замена ё на е)
+filtered = [normalize(w) for w in base_words if w.isalpha() and 4 <= len(w) <= 11]
+
+# Удаляем дубликаты, которые могли появиться после нормализации
+filtered = list(dict.fromkeys(filtered))
 
 # Сортируем список и записываем обратно в base_words.json
 WORDLIST = sorted(filtered)
@@ -423,12 +427,14 @@ async def suggest_white_callback(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     
-    # Извлекаем слово из callback_data
-    word = query.data.split(':', 1)[1]
+    # Извлекаем слово из callback_data и нормализуем его
+    word = normalize(query.data.split(':', 1)[1])
+    logger.info(f"Пользователь предложил слово для белого списка: {word}")
     
-    # Добавляем слово в предложения для белого списка
+    # Добавляем нормализованное слово в предложения для белого списка
     suggestions["white"].add(word)
     save_suggestions(suggestions)
+    logger.info(f"Обновленный список предложений: {suggestions}")
     
     # Обновляем сообщение, убирая кнопку
     await query.edit_message_text(
@@ -648,12 +654,20 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     secret = cg["secret"]
     length = len(secret)
 
+    # Нормализуем слово для проверки (приводим к нижний регистр и заменяем ё на е)
+    normalized_guess = normalize(guess)
+    
     # Валидация
+    logger.info(f"Проверка слова: {guess} (нормализовано: {normalized_guess}), длина: {len(guess)}, нужная длина: {length}")
+    logger.info(f"Слово в словаре: {normalized_guess in WORDLIST}")
+    
     if len(guess) != length:
+        logger.info(f"Неверная длина слова: {len(guess)} вместо {length}")
         await update.message.reply_text(f"Введите слово из {length} букв.")
         return GUESSING
-        
-    if guess not in WORDLIST:
+    
+    if normalized_guess not in WORDLIST:
+        logger.info(f"Слово {normalized_guess} не найдено в словаре, показываем кнопку")
         # Предлагаем добавить слово в белый список
         keyboard = [
             [
@@ -665,7 +679,7 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            f"Слово «{guess}» не найдено в словаре.",
+            f"Слово «{normalized_guess}» не найдено в словаре.",
             reply_markup=reply_markup
         )
         return GUESSING
