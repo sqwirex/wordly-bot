@@ -1579,6 +1579,8 @@ def main():
     app.add_handler(CommandHandler("global_stats", global_stats))
     app.add_handler(CommandHandler("dict_file", dict_file))
     app.add_handler(CommandHandler("dump_activity", dump_activity))
+    app.add_handler(CommandHandler("ban", ban_user))
+    app.add_handler(CommandHandler("unban", unban_user))
     
     # Обработчик для кнопки предложения слова в белый список
     app.add_handler(CallbackQueryHandler(suggest_white_callback, pattern=r'^suggest_white:'))
