@@ -794,7 +794,8 @@ async def suggest_white_callback(update: Update, context: ContextTypes.DEFAULT_T
     word = normalize(query.data.split(':', 1)[1])
     user_id = str(update.effective_user.id)
     
-    # Проверяем, есть ли слово уже в основном словаре
+    # Загружаем текущие предложения и основной словарь
+    current_suggestions = load_suggestions()
     with BASE_FILE.open("r", encoding="utf-8") as f:
         base_words = set(json.load(f))
     
@@ -803,9 +804,12 @@ async def suggest_white_callback(update: Update, context: ContextTypes.DEFAULT_T
     user = store["users"].get(user_id, {})
     
     # Добавляем слово в предложения для белого списка, если его там еще нет
-    if word not in suggestions["white"] and word not in base_words:
-        suggestions["white"].add(word)
-        save_suggestions(suggestions)
+    if word not in current_suggestions["white"] and word not in base_words:
+        current_suggestions["white"].add(word)
+        save_suggestions(current_suggestions)
+        # Обновляем глобальную переменную
+        global suggestions
+        suggestions = current_suggestions
     
     # Добавляем слово в список предложенных пользователем, если его там еще нет
     if "suggested_words" not in user:
