@@ -1606,6 +1606,9 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Удаляем флаг уведомлений, чтобы использовать настройки по умолчанию
             if "notification" in users[user_id]:
                 del users[user_id]["notification"]
+            # Удаляем текущую игру, если она есть
+            if "current_game" in users[user_id]:
+                del users[user_id]["current_game"]
             save_store(store)
             await update.message.reply_text(f"✅ Пользователь {users[user_id].get('first_name', user_id)} (ID: {user_id}) успешно разблокирован.")
             try:
@@ -1614,8 +1617,10 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text="✅ Вы были разблокированы в этом боте.\n\n"
                          "Теперь вы можете снова использовать все функции бота."
                 )
-                # Сбрасываем состояние пользователя после разбана
+                # Полностью очищаем состояние пользователя
                 context.user_data.clear()
+                # Сбрасываем состояние ConversationHandler
+                return ConversationHandler.END
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление о разблокировке пользователю {user_id}: {e}")
 
