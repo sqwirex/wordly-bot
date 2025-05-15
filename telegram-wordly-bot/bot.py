@@ -397,18 +397,28 @@ BASE_FILE = Path("base_words.json")
 # Читаем список слов из base_words.json
 with BASE_FILE.open("r", encoding="utf-8") as f:
     base_words = json.load(f)
+    if isinstance(base_words, dict):
+        # Если файл уже в новом формате
+        main_words = base_words.get("main", [])
+        additional_words = base_words.get("additional", [])
+    else:
+        # Если файл в старом формате (просто список)
+        main_words = base_words
+        additional_words = []
 
 # Фильтруем по критериям: только буквы, длина 4–11 символов
 # и нормализуем слова (нижний регистр, замена ё на е)
-filtered = [normalize(w) for w in base_words if w.isalpha() and 4 <= len(w) <= 11]
+filtered_main = [normalize(w) for w in main_words if w.isalpha() and 4 <= len(w) <= 11]
+filtered_additional = [normalize(w) for w in additional_words if w.isalpha() and 4 <= len(w) <= 11]
 
 # Удаляем дубликаты, которые могли появиться после нормализации
-filtered = list(dict.fromkeys(filtered))
+filtered_main = list(dict.fromkeys(filtered_main))
+filtered_additional = list(dict.fromkeys(filtered_additional))
 
-# Сортируем список и записываем обратно в base_words.json
-WORDLIST = sorted(filtered)
+# Сортируем списки
+WORDLIST = sorted(filtered_main)
 with BASE_FILE.open("w", encoding="utf-8") as f:
-    json.dump({"main": WORDLIST, "additional": []}, f, ensure_ascii=False, indent=2)
+    json.dump({"main": WORDLIST, "additional": sorted(filtered_additional)}, f, ensure_ascii=False, indent=2)
 
 GREEN, YELLOW, WHITE = "🟩", "🟨", "⬜"
 
@@ -439,11 +449,14 @@ def check_ban_status(handler):
         user_id = str(update.effective_user.id)
         if await is_banned(user_id):
             try:
-                context.user_data.clear()
-                if update.callback_query:
-                    await update.callback_query.answer("❌ Вы заблокированы в этом боте.", show_alert=True)
-                else:
-                    await update.message.reply_text("❌ Вы заблокированы в этом боте.")
+                # Проверяем, было ли уже отправлено сообщение о бане
+                if not context.user_data.get("ban_message_sent"):
+                    context.user_data.clear()
+                    if update.callback_query:
+                        await update.callback_query.answer("❌ Вы заблокированы в этом боте.", show_alert=True)
+                    else:
+                        await update.message.reply_text("❌ Вы заблокированы в этом боте.")
+                    context.user_data["ban_message_sent"] = True
                 return ConversationHandler.END
             except Exception as e:
                 logger.warning(f"Error handling banned user {user_id}: {e}")
@@ -1177,20 +1190,28 @@ async def dict_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Читаем свежий словарь из base_words.json
     with BASE_FILE.open("r", encoding="utf-8") as f:
-        fresh_list = json.load(f)
+        data = json.load(f)
+        main_words = data.get("main", [])
+        additional_words = data.get("additional", [])
 
-    total = len(fresh_list)
-    data = "\n".join(fresh_list)
+    total_main = len(main_words)
+    total_additional = len(additional_words)
+    total = total_main + total_additional
 
     # Считаем количество слов каждой длины (4–11)
-    length_counts = Counter(len(w) for w in fresh_list)
-    stats_lines = [
-        f"{length} букв: {length_counts.get(length, 0)}"
-        for length in range(4, 12)
-    ]
+    main_length_counts = Counter(len(w) for w in main_words)
+    additional_length_counts = Counter(len(w) for w in additional_words)
+
+    stats_lines = []
+    for length in range(4, 12):
+        main_count = main_length_counts.get(length, 0)
+        additional_count = additional_length_counts.get(length, 0)
+        stats_lines.append(f"{length} букв: {main_count} (main) + {additional_count} (additional) = {main_count + additional_count}")
+
     stats_text = "\n".join(stats_lines)
 
-    # Упаковываем весь список в файл
+    # Упаковываем списки в файл
+    data = "=== Main Words ===\n" + "\n".join(main_words) + "\n\n=== Additional Words ===\n" + "\n".join(additional_words)
     bio = BytesIO(data.encode("utf-8"))
     bio.name = "wordlist.txt"
 
@@ -1199,7 +1220,9 @@ async def dict_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         document=bio,
         filename="wordlist.txt",
         caption=(
-            f"📚 В словаре всего {total} слов.\n\n"
+            f"📚 В словаре всего {total} слов:\n"
+            f"• {total_main} в основном списке\n"
+            f"• {total_additional} в дополнительном списке\n\n"
             f"🔢 Распределение по длине:\n{stats_text}"
         )
     )
