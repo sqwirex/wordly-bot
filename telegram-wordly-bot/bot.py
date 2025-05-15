@@ -1307,8 +1307,9 @@ async def suggestions_move_start(update: Update, context: ContextTypes.DEFAULT_T
 
     # Если все ок — запускаем диалог перемещения
     await update.message.reply_text(
-        "Введи слова для перемещения из белого списка в add список (формат):\n"
+        "Введи слова для перемещения в add список (формат):\n"
         "слово1, слово2, слово3\n\n"
+        "Слова будут перемещены из черного или белого списка в add список.\n"
         "Или /cancel для отмены."
     )
     return REMOVE_INPUT
@@ -1322,24 +1323,34 @@ async def suggestions_move_process(update: Update, context: ContextTypes.DEFAULT
     context.user_data["in_remove"] = True
     text = update.message.text.strip()
     sugg = load_suggestions()
-    moved = []
+    moved = {"black": [], "white": []}
 
     # извлекаем слова через запятую
     words = [w.strip().lower() for w in text.split(",") if w.strip()]
     for w in words:
-        if w in sugg["white"]:
+        # Проверяем наличие слова в черном списке
+        if w in sugg["black"]:
+            sugg["black"].remove(w)
+            sugg["add"].add(w)
+            moved["black"].append(w)
+        # Проверяем наличие слова в белом списке
+        elif w in sugg["white"]:
             sugg["white"].remove(w)
             sugg["add"].add(w)
-            moved.append(w)
+            moved["white"].append(w)
 
     save_suggestions(sugg)
     
     # формируем ответ
-    if moved:
-        await update.message.reply_text(f'Перемещено в add список: {", ".join(moved)}')
-    else:
-        await update.message.reply_text("Ничего не перемещено.")
-    
+    parts = []
+    if moved["black"]:
+        parts.append(f'Из черного списка перемещено в add: {", ".join(moved["black"])}')
+    if moved["white"]:
+        parts.append(f'Из белого списка перемещено в add: {", ".join(moved["white"])}')
+    if not parts:
+        parts = ["Ничего не перемещено."]
+        
+    await update.message.reply_text("\n".join(parts))
     context.user_data.pop("in_remove", None)
     context.user_data["just_done"] = True
     return ConversationHandler.END
