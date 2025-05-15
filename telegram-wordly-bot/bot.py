@@ -449,14 +449,13 @@ def check_ban_status(handler):
         user_id = str(update.effective_user.id)
         if await is_banned(user_id):
             try:
-                # Проверяем, было ли уже отправлено сообщение о бане
-                if not context.user_data.get("ban_message_sent"):
-                    context.user_data.clear()
-                    if update.callback_query:
-                        await update.callback_query.answer("❌ Вы заблокированы в этом боте.", show_alert=True)
-                    else:
-                        await update.message.reply_text("❌ Вы заблокированы в этом боте.")
-                    context.user_data["ban_message_sent"] = True
+                # Сбрасываем флаг для каждого нового сообщения
+                context.user_data.pop("ban_message_sent", None)
+                context.user_data.clear()
+                if update.callback_query:
+                    await update.callback_query.answer("❌ Вы заблокированы в этом боте.", show_alert=True)
+                else:
+                    await update.message.reply_text("❌ Вы заблокированы в этом боте.")
                 return ConversationHandler.END
             except Exception as e:
                 logger.warning(f"Error handling banned user {user_id}: {e}")
