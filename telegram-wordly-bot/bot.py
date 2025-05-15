@@ -434,18 +434,17 @@ def make_feedback(secret: str, guess: str) -> str:
 # --- Обработчики команд ---
 
 def check_ban_status(handler):
-    """Декоратор для проверки бана пользователя перед выполнением обработчика"""
     @wraps(handler)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user_id = str(update.effective_user.id)
         if await is_banned(user_id):
             try:
-                context.user_data.clear()  # Сброс состояния для забаненного пользователя
+                context.user_data.clear()
                 if update.callback_query:
                     await update.callback_query.answer("❌ Вы заблокированы в этом боте.", show_alert=True)
                 else:
                     await update.message.reply_text("❌ Вы заблокированы в этом боте.")
-                return
+                return ConversationHandler.END
             except Exception as e:
                 logger.warning(f"Error handling banned user {user_id}: {e}")
                 return
@@ -1546,6 +1545,8 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text="❌ Вы были заблокированы в этом боте.\n\n"
                          "Если вы считаете, что это произошло по ошибке, пожалуйста, свяжитесь с администратором."
                 )
+                # Сбрасываем состояние пользователя после бана
+                context.user_data.clear()
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление о блокировке пользователю {user_id}: {e}")
     
@@ -1590,6 +1591,8 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text="✅ Вы были разблокированы в этом боте.\n\n"
                          "Теперь вы можете снова использовать все функции бота."
                 )
+                # Сбрасываем состояние пользователя после разбана
+                context.user_data.clear()
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление о разблокировке пользователю {user_id}: {e}")
 
