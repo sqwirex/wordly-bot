@@ -461,6 +461,11 @@ def check_ban_status(handler):
             except Exception as e:
                 logger.warning(f"Error handling banned user {user_id}: {e}")
                 return
+        else:
+            # Если пользователь был разбанен, очищаем его состояние при первом сообщении
+            if context.user_data.get("was_banned"):
+                context.user_data.clear()
+                context.user_data["was_banned"] = False
         return await handler(update, context, *args, **kwargs)
     return wrapper
 
@@ -1617,10 +1622,8 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text="✅ Вы были разблокированы в этом боте.\n\n"
                          "Теперь вы можете снова использовать все функции бота."
                 )
-                # Полностью очищаем состояние пользователя
-                context.user_data.clear()
-                # Сбрасываем состояние ConversationHandler
-                return ConversationHandler.END
+                # Устанавливаем флаг, что пользователь был разбанен
+                context.user_data["was_banned"] = True
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление о разблокировке пользователю {user_id}: {e}")
 
