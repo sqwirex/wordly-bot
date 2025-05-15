@@ -1269,11 +1269,14 @@ async def suggestions_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sugg = load_suggestions()
     black = sugg.get("black", [])
     white = sugg.get("white", [])
+    add = sugg.get("add", [])
     text = (
         "Предложения для черного списка:\n"
         + (", ".join(f'"{w}"' for w in black) if black else "— пусто")
         + "\n\nПредложения для белого списка:\n"
         + (", ".join(f'"{w}"' for w in white) if white else "— пусто")
+        + "\n\nПредложения для дополнительного списка:\n"
+        + (", ".join(f'"{w}"' for w in add) if add else "— пусто")
     )
     await update.message.reply_text(text)
 
