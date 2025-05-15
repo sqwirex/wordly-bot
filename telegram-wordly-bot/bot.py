@@ -1349,7 +1349,8 @@ async def suggestions_remove_start(update: Update, context: ContextTypes.DEFAULT
     await update.message.reply_text(
         "Введи, что удалить (формат):\n"
         "black: слово1, слово2\n"
-        "white: слово3, слово4\n\n"
+        "white: слово3, слово4\n"
+        "add: слово5, слово6\n\n"
         "Или /cancel для отмены."
     )
     return REMOVE_INPUT
@@ -1363,7 +1364,7 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
     context.user_data["in_remove"] = True
     text = update.message.text.strip()
     sugg = load_suggestions()
-    removed = {"black": [], "white": []}
+    removed = {"black": [], "white": [], "add": []}
 
     # парсим построчно
     for line in text.splitlines():
@@ -1371,7 +1372,7 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
             continue
         key, vals = line.split(":", 1)
         key = key.strip().lower()
-        if key not in ("black", "white"):
+        if key not in ("black", "white", "add"):
             continue
         # извлекаем слова через запятую
         words = [w.strip().lower() for w in vals.split(",") if w.strip()]
@@ -1386,8 +1387,8 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
     store = load_store()
     removed_count = 0
     
-    # Собираем все удаленные слова из обоих списков
-    all_removed_words = set(removed["black"]) | set(removed["white"])
+    # Собираем все удаленные слова из всех списков
+    all_removed_words = set(removed["black"]) | set(removed["white"]) | set(removed["add"])
     
     # Проходим по всем пользователям и удаляем слова из их списков
     for user_id, user_data in store["users"].items():
@@ -1407,6 +1408,8 @@ async def suggestions_remove_process(update: Update, context: ContextTypes.DEFAU
         parts.append(f'Из черного удалено: {", ".join(removed["black"])}')
     if removed["white"]:
         parts.append(f'Из белого удалено: {", ".join(removed["white"])}')
+    if removed["add"]:
+        parts.append(f'Из add удалено: {", ".join(removed["add"])}')
     if removed_count > 0:
         parts.append(f'Из профилей пользователей удалено {removed_count} слов.')
     if not parts:
