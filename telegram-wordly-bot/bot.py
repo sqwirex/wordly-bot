@@ -699,7 +699,12 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Нормализуем слово для проверки (приводим к нижний регистр и заменяем ё на е)
     normalized_guess = normalize(guess)
     
-    # Валидация
+    # Проверяем на пробелы до проверки длины
+    if " " in guess:
+        await update.message.reply_text("Пожалуйста, введите слово без пробелов.")
+        return GUESSING
+    
+    # Валидация длины
     if len(guess) != length:
         await update.message.reply_text(f"Введите слово из {length} букв.")
         return GUESSING
@@ -716,7 +721,14 @@ async def handle_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return GUESSING
     
-    if normalized_guess not in WORDLIST:
+    # Проверяем слово в основном и дополнительном списках
+    with BASE_FILE.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+        main_words = set(data.get("main", []))
+        additional_words = set(data.get("additional", []))
+        all_words = main_words | additional_words
+    
+    if normalized_guess not in all_words:
         # Предлагаем добавить слово в белый список
         keyboard = [
             [
