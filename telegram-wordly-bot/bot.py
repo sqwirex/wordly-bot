@@ -440,6 +440,7 @@ def check_ban_status(handler):
         user_id = str(update.effective_user.id)
         if await is_banned(user_id):
             try:
+                context.user_data.clear()  # Сброс состояния для забаненного пользователя
                 if update.callback_query:
                     await update.callback_query.answer("❌ Вы заблокированы в этом боте.", show_alert=True)
                 else:
